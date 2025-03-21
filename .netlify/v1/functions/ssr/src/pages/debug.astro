@@ -1,0 +1,18 @@
+---
+// 最も単純なデバッグページ - Firebase初期化などを含まない
+---
+
+<!DOCTYPE html>
+<html>
+<head>
+  <title>デバッグページ</title>
+</head>
+<body>
+  <h1>デバッグページ</h1>
+  <p>このページが表示されればルーティングの基本は機能しています。</p>
+  <p>現在の時刻: {new Date().toLocaleString('ja-JP')}</p>
+  
+  <h2>環境変数チェック</h2>
+  <pre>PUBLIC_FIREBASE_PROJECT_ID: {import.meta.env.PUBLIC_FIREBASE_PROJECT_ID || '未設定'}</pre>
+</body>
+</html> 

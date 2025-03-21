@@ -1,0 +1,661 @@
+---
+export const prerender = false;
+
+// ◆ Layout およびチャートコンポーネントをインポート
+import Layout from "../../../layouts/Layout.astro";
+import MyLineChart from "../../../components/MyLineChart.jsx";
+
+// ◆ Firebase Admin SDK のインポート
+import admin from "firebase-admin";
+import { Astro } from "astro";
+
+// ----------------------
+// ▼ (1) Firebase Admin の初期化
+// ----------------------
+if (!admin.apps.length) {
+  const serviceAccountStr =
+    process.env.FIREBASE_SERVICE_ACCOUNT || import.meta.env.FIREBASE_SERVICE_ACCOUNT;
+  const serviceAccount = JSON.parse(serviceAccountStr || "{}");
+  admin.initializeApp({
+    credential: admin.credential.cert(serviceAccount),
+  });
+}
+
+const adminAuth = admin.auth();
+const db = admin.firestore();
+
+// ----------------------
+// ▼ (2) Cookie から token を取り出し、ユーザーのログイン情報を確認
+// ----------------------
+const cookieHeader = Astro.request.headers.get("cookie") || "";
+const cookies = Object.fromEntries(
+  cookieHeader.split("; ").filter(Boolean).map((c: { split: (arg0: string) => [any, ...any[]]; }) => {
+    const [key, ...v] = c.split("=");
+    return [key, v.join("=")];
+  })
+);
+const token = cookies["token"] || "";
+
+let authUser = null;
+if (token) {
+  try {
+    authUser = await adminAuth.verifyIdToken(token);
+  } catch (err) {
+    console.error("IDトークンの検証に失敗:", err);
+  }
+}
+
+// ----------------------
+// ▼ (3) Firestore からユーザーデータを取得
+// ----------------------
+let userData = null;
+if (authUser) {
+  const snap = await db.collection("users").doc(authUser.uid).get();
+  if (snap.exists) {
+    userData = snap.data();
+  }
+}
+
+// ----------------------
+// ▼ (4) URL パラメータから projectId を取得し、
+//       ユーザーが所有する projects[] の中から該当のプロジェクトを検索
+// ----------------------
+const { projectId } = Astro.params;
+
+let currentProject = null;
+if (userData && userData.projects) {
+  currentProject = userData.projects.find((p: { id: any; }) => p.id === projectId);
+}
+
+if (!currentProject) {
+  console.error("該当のプロジェクトが見つかりません");
+  return new Response(null, {
+    status: 303,
+    headers: { Location: "/" },
+  });
+}
+
+// ----------------------
+// ▼ (5) Layout.astro に渡すための accountName を作成
+// ----------------------
+const accountName =
+  authUser && userData && userData.displayName
+    ? userData.displayName
+    : "ログイン";
+
+// ----------------------
+// ▼ (6) サンプルのグラフ用データ
+// ----------------------
+const pvLabels = [
+  "2025/02/16",
+  "2025/02/17",
+  "2025/02/18",
+  "2025/02/19",
+  "2025/02/20",
+  "2025/02/21",
+  "2025/02/22",
+];
+const pvDatas = [10, 25, 15, 2, 10, 32, 18];
+
+const ecLabels = [
+  "2025/02/16",
+  "2025/02/17",
+  "2025/02/18",
+  "2025/02/19",
+  "2025/02/20",
+  "2025/02/21",
+  "2025/02/22",
+];
+const ecSalesData = [1800, 2000, 1200, 900, 2200, 1800, 2500];
+
+// ----------------------
+// ▼ (7) ページタイトル等を設定
+// ----------------------
+const pageTitle = "プロジェクト別ページ";
+
+// ----------------------
+// ▼ (8) 実際のページをレンダリング
+//     Layout には accountName を渡して
+//     ナビゲーションにユーザー名を表示できるようにする
+// ----------------------
+
+const userId = authUser?.uid || "";
+---
+<Layout title={pageTitle} userId={userId} accountName={accountName} projects={userData?.projects ?? []}>
+  <div class="pan">
+    <p class="pan_item">
+      <a href={userId ? `/${userId}` : "/"}>トップ</a>
+      <span>
+        <svg width="7" height="7" viewBox="0 0 7 7" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path
+            d="M0.456 6.356V5.18L3.156 4.208L4.98 3.548V3.5L3.156 2.828L0.456 1.856V0.692L6.384 2.996V4.04L0.456 6.356Z"
+            fill="#C4C4C4"
+          />
+        </svg>
+      </span>
+      <span>{currentProject?.name || "(No Name)"}</span>
+    </p>
+  </div>
+
+  <nav class="nav">
+    <button class="nav_btn">
+      <svg
+        width="16"
+        height="16"
+        viewBox="0 0 16 16"
+        fill="none"
+        xmlns="http://www.w3.org/2000/svg"
+      >
+        <g clip-path="url(#clip0_623_115)">
+          <path
+            fill-rule="evenodd"
+            clip-rule="evenodd"
+            d="M10.4712 7.52879C10.5962 7.65381 10.6664 7.82334 10.6664 8.00012C10.6664 8.1769 10.5962 8.34644 10.4712 8.47145L6.6999 12.2428C6.63841 12.3065 6.56484 12.3572 6.48351 12.3922C6.40217 12.4271 6.31469 12.4455 6.22617 12.4463C6.13765 12.4471 6.04986 12.4302 5.96793 12.3967C5.886 12.3631 5.81157 12.3136 5.74897 12.251C5.68638 12.1885 5.63688 12.114 5.60336 12.0321C5.56983 11.9502 5.55297 11.8624 5.55374 11.7739C5.55451 11.6853 5.5729 11.5979 5.60784 11.5165C5.64277 11.4352 5.69356 11.3616 5.75724 11.3001L9.05724 8.00012L5.75724 4.70012C5.6358 4.57439 5.5686 4.40598 5.57012 4.23119C5.57164 4.05639 5.64175 3.88918 5.76536 3.76557C5.88896 3.64197 6.05617 3.57186 6.23097 3.57034C6.40577 3.56882 6.57417 3.63601 6.6999 3.75745L10.4712 7.52879Z"
+            fill="white"
+          />
+        </g>
+        <defs>
+          <clipPath id="clip0_623_115">
+            <rect width="16" height="16" fill="white" />
+          </clipPath>
+        </defs>
+      </svg>
+    </button>
+    <ul class="nav_list">
+      <li class="nav_item">
+        <a href=`/projects/${projectId}` class="nav_link active" id="switch-btn"
+          >サマリー</a
+        >
+      </li>
+      <li class="nav_item">
+        <a href=`/projects/${projectId}/profile` class="nav_link" id="switch-btn"
+          >プロフィール</a
+        >
+      </li>
+      <li class="nav_item">
+        <a href=`/projects/${projectId}/form` class="nav_link" id="switch-btn"
+          >フォーム</a
+        >
+      </li>
+      <li class="nav_item">
+        <a href=`/projects/${projectId}/cms` class="nav_link" id="switch-btn">CMS</a>
+      </li>
+      <li class="nav_item">
+        <a href=`/projects/${projectId}/analitics` class="nav_link" id="switch-btn"
+          >アナリティクス</a
+        >
+      </li>
+      <li class="nav_item">
+        <a href=`/projects/${projectId}/preview` class="nav_link" id="switch-btn"
+          >プレビュー</a
+        >
+      </li>
+      <li class="nav_item">
+        <a href=`/projects/${projectId}/profile` class="nav_link" id="switch-btn"
+          >プレビュー</a
+        >
+      </li>
+    </ul>
+  </nav>
+
+  <div class="container" id="switch">
+    <section class="box">
+      <div class="inner">
+        <div class="prof">
+          <div class="prof_img"></div>
+          <div class="prof_title-wrapper">
+            <h3 class="prof_title">{currentProject?.name}</h3>
+            <a href="/" class="site_link"
+              >https://example-site/{currentProject?.name}</a
+            >
+          </div>
+          <div class="prof_wrapper">
+            <div class="prof_item">
+              <p class="prof_item_label">フォロワー</p>
+              <p class="prof_item_label label">
+                <strong>340</strong>
+                <span>人</span>
+              </p>
+            </div>
+            <div class="prof_item">
+              <p class="prof_item_label">テーマ</p>
+              <button class="prof_item_label_wrapper">
+                <p class="prof_item_label">
+                  <strong>キューティープリティー</strong>
+                </p>
+                <svg
+                  width="16"
+                  height="16"
+                  viewBox="0 0 16 16"
+                  fill="none"
+                  xmlns="http://www.w3.org/2000/svg"
+                >
+                  <g clip-path="url(#clip0_628_234)">
+                    <path
+                      fill-rule="evenodd"
+                      clip-rule="evenodd"
+                      d="M8.47121 10.9712C8.34619 11.0962 8.17666 11.1664 7.99988 11.1664C7.8231 11.1664 7.65356 11.0962 7.52855 10.9712L3.75721 7.1999C3.69354 7.13841 3.64275 7.06484 3.60781 6.98351C3.57287 6.90217 3.55448 6.81469 3.55371 6.72617C3.55294 6.63765 3.56981 6.54986 3.60333 6.46793C3.63685 6.386 3.68635 6.31157 3.74895 6.24897C3.81155 6.18638 3.88598 6.13688 3.96791 6.10336C4.04984 6.06983 4.13763 6.05297 4.22615 6.05374C4.31467 6.05451 4.40215 6.0729 4.48348 6.10784C4.56482 6.14277 4.63838 6.19356 4.69988 6.25724L7.99988 9.55724L11.2999 6.25724C11.4256 6.1358 11.594 6.0686 11.7688 6.07012C11.9436 6.07164 12.1108 6.14175 12.2344 6.26536C12.358 6.38896 12.4281 6.55617 12.4297 6.73097C12.4312 6.90577 12.364 7.07417 12.2425 7.1999L8.47121 10.9712Z"
+                      fill="white"
+                    />
+                  </g>
+                  <defs>
+                    <clipPath id="clip0_628_234">
+                      <rect
+                        width="16"
+                        height="16"
+                        fill="white"
+                        transform="matrix(0 1 -1 0 16 0.5)"
+                      />
+                    </clipPath>
+                  </defs>
+                </svg>
+              </button>
+            </div>
+          </div>
+          <div class="box_btn_wrapper">
+            <button class="box_btn_primary">公開中</button>
+            <button class="box_btn_secondary">プレビュー</button>
+          </div>
+        </div>
+        <div class="plan">
+          <ul class="plan_list">
+            <li class="plan_item">
+              <p class="plan_label">料金</p>
+              <div class="plan_contents">
+                <p class="plan_text">
+                  <strong class="strong">無料</strong>
+                </p>
+                <div class="plan_bar">
+                  <span class="plan_bar_elem"></span>
+                </div>
+              </div>
+            </li>
+            <li class="plan_item">
+              <p class="plan_label">データ使用量</p>
+              <div class="plan_contents">
+                <p class="plan_text">
+                  <strong class="strong">12</strong>
+                  <span>GB</span>
+                </p>
+                <div class="plan_bar">
+                  <span class="plan_bar_elem"></span>
+                </div>
+              </div>
+            </li>
+            <li class="plan_item">
+              <p class="plan_label">CMS</p>
+              <div class="plan_contents">
+                <p class="plan_text">
+                  <strong class="strong">1</strong>
+                  <span>/</span>
+                  <span>1</span>
+                </p>
+              </div>
+            </li>
+            <li class="plan_item">
+              <p class="plan_label">アナリティクス</p>
+              <div class="plan_contents">
+                <p class="plan_text">
+                  <strong class="strong">過去1週間まで</strong>
+                </p>
+              </div>
+            </li>
+          </ul>
+          <div class="box_btn_wrapper">
+            <button class="box_btn_primary">アップグレード</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="contents">
+      <h2 class="box_label">訪問数</h2>
+      <div class="box">
+        <div class="inner">
+          <div class="wrapper">
+            <p>総訪問数</p>
+            <p>
+              <strong>540</strong>
+              <span>人</span>
+            </p>
+          </div>
+          <MyLineChart
+            client:load
+            dataLabel="訪問数"
+            labels={pvLabels}
+            dataPoints={pvDatas}
+            borderColor="#468FDD"
+          />
+        </div>
+      </div>
+    </section>
+
+    <section class="contents">
+      <h2 class="box_label">EC売り上げ</h2>
+      <div class="box">
+        <div class="inner">
+          <div class="wrapper">
+            <p>総EC売り上げ金額</p>
+            <p>
+              <strong>3,053,082</strong>
+              <span>円</span>
+            </p>
+          </div>
+          <MyLineChart
+            client:load
+            dataLabel="売り上げ(円)"
+            labels={ecLabels}
+            dataPoints={ecSalesData}
+            borderColor="#468FDD"
+          />
+        </div>
+      </div>
+    </section>
+  </div>
+</Layout>
+
+
+<style lang="scss">
+  .pan{
+    margin-top: 8px;
+    
+    &_item{
+      display: flex;
+      gap: 8px;
+      color: var(--sub-font-color);
+      font-size: var(--font-size-xs);
+      font-weight: 300;
+
+      >a{
+        color: var(--main-font-color);
+      }
+    }
+  }
+
+  .nav{
+    position: relative;
+    margin-top: 16px;
+    width: 100%;
+    overflow: hidden;
+    border-radius: var(--border-radius-m);
+    background-color: var(--sub-bg-color);
+    border: 1px solid var(--main-border-color);
+
+    &_btn{
+      position: absolute;
+      right: 0;
+      height: 100%;
+      padding: 0 8px;
+      background-color: var(--sub-bg-color);
+      border-left: 1px solid var(--main-border-color);
+      z-index: 10;
+    }
+
+    &_list{
+      width: 100%;
+      display: flex;
+      flex-wrap: nowrap;
+      gap: 8px;
+      align-items: center;
+      padding-inline: 24px;
+      overflow-x: auto;
+    }
+
+    &_item{
+
+      >.active{
+        color: var(--main-font-color);
+        border-bottom: 1px solid var(--accent-bg-color);
+      }
+    }
+
+    &_link{
+      position: relative;
+      padding: 16px 40px;
+      text-wrap: nowrap;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--sub-font-color);
+      font-size: var(--font-size-xs);
+      font-weight: 400;
+      transition: all .2s;
+
+      &:hover{
+        color: var(--main-font-color);
+        transition: all .2s;
+
+        &::after{
+          content: "";
+          position: absolute;
+          bottom: 0;
+          height: 1px;
+          background-color: var(--accent-bg-color);
+          animation: nav_border .2s forwards;
+
+          @keyframes nav_border {
+            0%{
+              width: 0;
+            }
+            100%{
+              width: 100%;
+            }
+          }
+        }
+      }
+    }
+  }
+
+  .contents{
+    margin-top: 40px;
+  }
+
+  .wrapper{
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    >p{
+      font-size: var(--font-size-xs);
+      color: var(--sub-font-color);
+      font-weight: 400;
+
+      >strong{
+        color: var(--main-font-color);
+        font-weight: 500;
+      }
+    }
+  }
+
+  .box{
+		width: 100%;
+		background-color: var(--sub-bg-color);
+		border: 1px solid var(--main-border-color);
+		border-radius: var(--border-radius-m);
+		margin-top: 8px;
+
+		&:first-of-type{
+			margin-top: 16px;
+		}
+
+		>.inner{
+			padding: 16px;
+		}
+
+    &_label{
+      font-size: var(--font-size-s);
+      color: var(--main-font-color);
+    }
+
+    &_btn{
+
+      &_wrapper{
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        gap: 8px;
+      }
+
+      &_primary{
+        align-self: flex-end;
+        padding: 12px 16px;
+        border-radius: var(--border-radius-m);
+        font-size: var(--font-size-xs);
+        color: var(--main-font-color);
+        background-color: var(--accent-bg-color);
+      }
+      &_secondary{
+        align-self: baseline;
+        padding: 8px 16px;
+        border-radius: var(--border-radius-m);
+        font-size: var(--font-size-xs);
+        color: var(--main-font-color);
+        border: 1px solid var(--sub-border-color);
+      }
+    }
+  }
+
+  .prof{
+    display: flex;
+    align-items: center;
+
+    &_img{
+      width: 184px;
+      aspect-ratio: 16/9;
+      background-color: var(--elem-bg-color);
+      border-radius: var(--border-radius-m);
+    }
+
+    &_title-wrapper{
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      margin-left: 16px;
+
+      >.site_link{
+        color: var(--accent2-bg-color);
+        font-size: var(--font-size-xs);
+      }
+    }
+    &_title{
+      font-size: var(--font-size-m);
+      color: var(--main-font-color);
+    }
+
+    &_wrapper{
+      flex: 1;
+      display: flex;
+      align-items: center;
+      margin-left: 24px;
+    }
+
+    &_item{
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      padding-inline: 16px;
+      gap: 8px;
+      // border-left: 1px solid var(--main-border-color);
+      &::after{
+        content: "";
+        position: absolute;
+        height: 32px;
+        width: 1px;
+        top: 50%;
+        left: 0;
+        transform: translateY(-50%);
+        background-color: var(--main-border-color);
+      }
+
+      &_label_wrapper{
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      &_label{
+        font-size: var(--font-size-xs);
+        color: var(--sub-font-color);
+
+        >strong{
+          color: var(--main-font-color);
+          font-weight: 500;
+        }
+      }
+    }
+  }
+
+  .plan{
+    display: flex;
+    align-items: center;
+    padding-top: 16px;
+    margin-top: 16px;
+    border-top: 1px solid var(--main-border-color);
+
+    &_list{
+      height: 96px;
+			display: grid;
+			grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+      gap: 16px;
+      flex: 1;
+    }
+
+    &_item{
+      display: flex;
+			flex-direction: column;
+			align-items: center;
+			padding: 12px;
+			background-color: var(--item-bg-color);
+			border: 1px solid var(--main-border-color);
+			border-radius: var(--border-radius-m);
+    }
+
+    &_label{
+      font-size: var(--font-size-xs);
+			color: var(--sub-font-color);
+    }
+
+    &_contents{
+			width: 100%;
+			display: flex;
+			flex: 1;
+			gap: 12px;
+			margin-top: 12px;
+			flex-direction: column;
+			align-items: center;
+			justify-content: center;
+    }
+
+    &_text{
+		  font-size: var(--font-size-xs);
+		  color: var(--main-font-color);
+		  >.strong{
+		  	font-weight: 500;
+		  	font-size: var(--font-size-s);
+		  }
+	  }
+
+    &_bar{
+			position: relative;
+			width: 100%;
+			height: 8px;
+			background-color: var(--elem-bg-color);
+			border-radius: 100px;
+			&_elem{
+				position: absolute;
+				width: 30%;
+				height: 100%;
+				background-color: var(--accent2-bg-color);
+				border-radius: 100px;
+				z-index: 10;
+			}
+		}
+  }
+
+  .dis-none{
+    display: none;
+  }
+  .dis-block{
+    display: block;
+  }
+  
+</style>
