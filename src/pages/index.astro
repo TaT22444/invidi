@@ -2,190 +2,183 @@
 export const prerender = false;
 
 import Layout from "../layouts/Layout.astro";
-import admin from "firebase-admin";
+import { getFirebaseAdmin } from "../lib/firebase-admin";
 
-// ===========================
-// Firebase Admin SDK 初期化
-// ===========================
-if (!admin.apps.length) {
-  const serviceAccountStr =
-    process.env.FIREBASE_SERVICE_ACCOUNT || import.meta.env.FIREBASE_SERVICE_ACCOUNT;
-  console.log("Service Account:", serviceAccountStr);
-  if (serviceAccountStr) {
-    const serviceAccount = JSON.parse(serviceAccountStr);
-    admin.initializeApp({
-      credential: admin.credential.cert(serviceAccount),
-    });
-  } else {
-    console.warn("No Firebase service account found.");
-  }
+// Firebase Admin SDK 初期化 - エラーハンドリング強化
+let adminAuth;
+let db;
+try {
+  const { auth, db: firestore } = getFirebaseAdmin();
+  adminAuth = auth;
+  db = firestore;
+} catch (error) {
+  console.error("Firebase Admin initialization failed:", error);
+  // エラーページを表示するか、最低限の機能で続行
 }
-const adminAuth = admin.auth();
-const db = admin.firestore();
 
-// ===========================
-// Cookie から token を取得
-// ===========================
-const cookieHeader = Astro.request.headers.get("cookie") || "";
-const cookies = Object.fromEntries(
-  cookieHeader.split("; ").filter(Boolean).map((c) => {
-    const [key, ...v] = c.split("=");
-    return [key, v.join("=")];
-  })
-);
-const token = cookies["token"] || "";
+// Cookie から token を取得 - エラーハンドリング強化
+let token = "";
+try {
+  const cookieHeader = Astro.request.headers.get("cookie") || "";
+  const cookies = Object.fromEntries(
+    cookieHeader.split("; ").filter(Boolean).map((c) => {
+      const [key, ...v] = c.split("=");
+      return [key, v.join("=")];
+    })
+  );
+  token = cookies["token"] || "";
+} catch (error) {
+  console.error("Cookie parsing failed:", error);
+  // エラー処理
+}
 
-// ===========================
 // エラー表示/フォーム切替用
-// ===========================
 let postError = "";
-let defaultFormMode = "login";
+let defaultFormMode = "login"; // 文字列として正しく設定
 
-// ===========================
 // POSTメソッド時の処理
-// ===========================
+let authUser = null;
 const method = Astro.request.method.toUpperCase();
 if (method === "POST") {
-  const formData = await Astro.request.formData();
-  const action = formData.get("action")?.toString() || "";
+  try {
+    const formData = await Astro.request.formData();
+    const action = formData.get("action")?.toString() || "";
 
-  // ----------------------------------
-  // ログアウト
-  // ----------------------------------
-  if (action === "logout") {
-    return new Response(null, {
-      status: 303,
-      headers: {
-        "Set-Cookie": `token=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT`,
-        Location: "/",
-      },
-    });
-  }
-
-  // ----------------------------------
-  // ログイン
-  // ----------------------------------
-  if (action === "login") {
-    const email = formData.get("email")?.toString() || "";
-    const password = formData.get("password")?.toString() || "";
-    const apiKey = import.meta.env.PUBLIC_FIREBASE_API_KEY;
-
-    // Firebase Auth REST APIを使ってログイン
-    const res = await fetch(
-      `https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${apiKey}`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          email,
-          password,
-          returnSecureToken: true,
-        }),
-      }
-    );
-    const data = await res.json();
-    if (data.error) {
-      console.error("[Login Error]", data.error);
-      postError = "ログインに失敗しました";
-    } else {
-      // 成功 → Cookie設定 → /[userId] にリダイレクト
-      const userId = data.localId; // FirebaseのUID
+    // ログアウト処理
+    if (action === "logout") {
       return new Response(null, {
         status: 303,
         headers: {
-          "Set-Cookie": `token=${data.idToken}; Path=/; HttpOnly`,
-          Location: `/${userId}`,
+          "Set-Cookie": `token=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT`,
+          Location: "/",
         },
       });
     }
-  }
 
-  // ----------------------------------
-  // 新規登録
-  // ----------------------------------
-  else if (action === "register") {
-    const email = formData.get("email")?.toString() || "";
-    const password = formData.get("password")?.toString() || "";
-    const confirmPassword = formData.get("confirmPassword")?.toString() || "";
-    const displayName = formData.get("displayName")?.toString() || "";
+    // ログイン処理
+    if (action === "login") {
+      const email = formData.get("email")?.toString() || "";
+      const password = formData.get("password")?.toString() || "";
+      const apiKey = import.meta.env.PUBLIC_FIREBASE_API_KEY;
 
-    if (password !== confirmPassword) {
-      postError = "パスワードが一致しません";
-      defaultFormMode = "register";
-    } else {
-      try {
-        // 1. Admin SDKでユーザー作成
-        const userRecord = await adminAuth.createUser({
-          email,
-          password,
-          displayName,
-        });
-        // 2. Firestoreに初期データを書き込む
-        await db.collection("users").doc(userRecord.uid).set({
-          displayName,
-          email,
-          plan: "free",
-          projects: [],
-        });
-
-        // 3. 作成したユーザーで即ログインするため、Firebase Auth REST APIを再度呼び出し
-        const apiKey = import.meta.env.PUBLIC_FIREBASE_API_KEY;
-        const signInRes = await fetch(
-          `https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${apiKey}`,
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              email,
-              password,
-              returnSecureToken: true,
-            }),
-          }
-        );
-        const signInData = await signInRes.json();
-        if (signInData.error) {
-          // もしログイン失敗ならエラー表示して終わる
-          console.error("[Register->Login Error]", signInData.error);
-          postError = "登録後の自動ログインに失敗しました";
-        } else {
-          // 4. 成功 → Cookie設定 → /[userId] にリダイレクト
-          const userId = signInData.localId;
-          return new Response(null, {
-            status: 303,
-            headers: {
-              "Set-Cookie": `token=${signInData.idToken}; Path=/; HttpOnly`,
-              Location: `/${userId}`,
-            },
-          });
+      // Firebase Auth REST APIを使ってログイン
+      const res = await fetch(
+        `https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${apiKey}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            email,
+            password,
+            returnSecureToken: true,
+          }),
         }
-      } catch (err) {
-        console.error("[Register Error]", err);
-        postError = "登録に失敗しました";
+      );
+      const data = await res.json();
+      if (data.error) {
+        console.error("[Login Error]", data.error);
+        postError = "ログインに失敗しました";
+      } else {
+        // 成功 → Cookie設定 → /[userId] にリダイレクト
+        const userId = data.localId; // FirebaseのUID
+        return new Response(null, {
+          status: 303,
+          headers: {
+            "Set-Cookie": `token=${data.idToken}; Path=/; HttpOnly`,
+            Location: `/${userId}`,
+          },
+        });
       }
     }
+    
+    // 新規登録処理
+    else if (action === "register") {
+      const email = formData.get("email")?.toString() || "";
+      const password = formData.get("password")?.toString() || "";
+      const confirmPassword = formData.get("confirmPassword")?.toString() || "";
+      const displayName = formData.get("displayName")?.toString() || "";
+
+      if (password !== confirmPassword) {
+        postError = "パスワードが一致しません";
+        defaultFormMode = "register";
+      } else {
+        try {
+          // 1. Admin SDKでユーザー作成
+          const userRecord = await adminAuth.createUser({
+            email,
+            password,
+            displayName,
+          });
+          // 2. Firestoreに初期データを書き込む
+          await db.collection("users").doc(userRecord.uid).set({
+            displayName,
+            email,
+            plan: "free",
+            projects: [],
+          });
+
+          // 3. 作成したユーザーで即ログインするため、Firebase Auth REST APIを再度呼び出し
+          const apiKey = import.meta.env.PUBLIC_FIREBASE_API_KEY;
+          const signInRes = await fetch(
+            `https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${apiKey}`,
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                email,
+                password,
+                returnSecureToken: true,
+              }),
+            }
+          );
+          const signInData = await signInRes.json();
+          if (signInData.error) {
+            // もしログイン失敗ならエラー表示して終わる
+            console.error("[Register->Login Error]", signInData.error);
+            postError = "登録後の自動ログインに失敗しました";
+          } else {
+            // 4. 成功 → Cookie設定 → /[userId] にリダイレクト
+            const userId = signInData.localId;
+            return new Response(null, {
+              status: 303,
+              headers: {
+                "Set-Cookie": `token=${signInData.idToken}; Path=/; HttpOnly`,
+                Location: `/${userId}`,
+              },
+            });
+          }
+        } catch (err) {
+          console.error("[Register Error]", err);
+          postError = "登録に失敗しました";
+        }
+      }
+    }
+  } catch (error) {
+    console.error("POST request handling failed:", error);
+    postError = "リクエスト処理中にエラーが発生しました";
   }
 }
 
-// ===========================
-// ログイン状態を確認
-// ===========================
-let authUser = null;
-if (token) {
-  try {
-    authUser = await adminAuth.verifyIdToken(token);
-  } catch (err) {
-    console.error("IDトークンの検証に失敗しました", err);
+// ユーザー認証状態の確認 - エラーハンドリング強化
+try {
+  if (token && adminAuth) {
+    const decodedToken = await adminAuth.verifyIdToken(token);
+    authUser = {
+      uid: decodedToken.uid,
+      email: decodedToken.email,
+    };
   }
+} catch (error) {
+  console.error("Token verification failed:", error);
+  // 無効なトークンの場合はクッキーをクリア
+  return new Response(null, {
+    status: 303,
+    headers: {
+      "Set-Cookie": `token=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT`,
+      Location: "/",
+    },
+  });
 }
-
-// もしログイン済みなら /[userId] にリダイレクトしたい場合、ここでも判定して返すことも可能
-// 例:
-// if (authUser?.uid) {
-//   return new Response(null, {
-//     status: 303,
-//     headers: { Location: `/${authUser.uid}` },
-//   });
-// }
 
 // ★ userId は「authUser がいればその UID」、無ければ "" とする
 const userId = authUser?.uid || "";
@@ -200,7 +193,7 @@ const accountName = authUser ? "ログアウト" : "ログイン";
   {/* ログインしていない場合 → ログイン/新規登録フォーム */}
   {!authUser && (
     <>
-      <div class="auth_box" id="auth_box_login">
+      <div id="auth_box_login" class={`auth_box ${defaultFormMode === "register" ? "dis-none" : ""}`}>
         <h2 class="auth_box_title">ログイン</h2>
         <form class="form" method="POST">
           <input type="hidden" name="action" value="login" />
@@ -240,7 +233,7 @@ const accountName = authUser ? "ログアウト" : "ログイン";
         </form>
       </div>
 
-      <div class="auth_box dis-none" id="auth_box_register">
+      <div id="auth_box_register" class={`auth_box ${defaultFormMode === "login" ? "dis-none" : ""}`}>
         <h2 class="auth_box_title">新規登録</h2>
         <form class="form" method="POST">
           <input type="hidden" name="action" value="register" />
@@ -392,43 +385,60 @@ const accountName = authUser ? "ログアウト" : "ログイン";
 </style>
 
 <script>
-  // 「ログイン」or「新規登録」フォーム切替
-  const loginBox = document.getElementById("auth_box_login");
-  const registerBox = document.getElementById("auth_box_register");
-  const toRegisterBtn = document.getElementById("auth_box_change_to_register");
-  const toLoginBtn = document.getElementById("auth_box_change_to_login");
+  // DOMContentLoadedを使用して、DOMが完全に読み込まれた後に実行
+  document.addEventListener('DOMContentLoaded', () => {
+    // 要素の存在確認
+    const loginBox = document.getElementById("auth_box_login");
+    const registerBox = document.getElementById("auth_box_register");
+    const toRegisterBtn = document.getElementById("auth_box_change_to_register");
+    const toLoginBtn = document.getElementById("auth_box_change_to_login");
+    
+    // 要素が存在しない場合は処理を中断
+    if (!loginBox || !registerBox) {
+      console.warn("Auth boxes not found");
+      return;
+    }
 
-  let defaultFormMode = "{defaultFormMode}";
-  const savedMode = localStorage.getItem("formMode") || defaultFormMode;
-  localStorage.setItem("formMode", savedMode);
+    // デフォルトのフォームモード
+    const defaultFormMode = "login"; // サーバーサイドの値と一致させる
+    const savedMode = localStorage.getItem("formMode") || defaultFormMode;
+    localStorage.setItem("formMode", savedMode);
 
-  function showLogin() {
-    loginBox.classList.remove("dis-none");
-    registerBox.classList.add("dis-none");
-  }
-  function showRegister() {
-    loginBox.classList.add("dis-none");
-    registerBox.classList.remove("dis-none");
-  }
+    // 表示切替関数
+    function showLogin() {
+      if (loginBox && registerBox) {
+        loginBox.classList.remove("dis-none");
+        registerBox.classList.add("dis-none");
+      }
+    }
+    
+    function showRegister() {
+      if (loginBox && registerBox) {
+        loginBox.classList.add("dis-none");
+        registerBox.classList.remove("dis-none");
+      }
+    }
 
-  // 初期表示
-  if (savedMode === "register") {
-    showRegister();
-  } else {
-    showLogin();
-  }
-
-  // 切り替えイベント
-  if (toRegisterBtn) {
-    toRegisterBtn.addEventListener("click", () => {
-      localStorage.setItem("formMode", "register");
+    // 初期表示
+    if (savedMode === "register") {
       showRegister();
-    });
-  }
-  if (toLoginBtn) {
-    toLoginBtn.addEventListener("click", () => {
-      localStorage.setItem("formMode", "login");
+    } else {
       showLogin();
-    });
-  }
+    }
+
+    // 切り替えイベント
+    if (toRegisterBtn) {
+      toRegisterBtn.addEventListener("click", () => {
+        localStorage.setItem("formMode", "register");
+        showRegister();
+      });
+    }
+    
+    if (toLoginBtn) {
+      toLoginBtn.addEventListener("click", () => {
+        localStorage.setItem("formMode", "login");
+        showLogin();
+      });
+    }
+  });
 </script>

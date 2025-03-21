@@ -1,42 +1,53 @@
 import admin from "firebase-admin";
+import { getFirestore } from "firebase-admin/firestore";
+import { getAuth } from "firebase-admin/auth";
 
 /**
  * Firebase Admin SDK のシングルトンインスタンスを取得する
  */
-export function getFirebaseAdmin() {
-  if (!admin.apps.length) {
-    // 環境変数から取得（Astroの環境変数とNode.jsの環境変数両方対応）
-    const serviceAccountStr =
-      process.env.FIREBASE_SERVICE_ACCOUNT || import.meta.env.FIREBASE_SERVICE_ACCOUNT;
+export function initializeFirebaseAdmin() {
+  if (admin.apps.length > 0) {
+    return { db: getFirestore(), auth: getAuth() };
+  }
+
+  try {
+    // 環境変数から設定を取得
+    const serviceAccountStr = 
+      process.env.FIREBASE_SERVICE_ACCOUNT || 
+      (typeof import.meta !== 'undefined' ? import.meta.env.FIREBASE_SERVICE_ACCOUNT : undefined);
     
     if (!serviceAccountStr) {
-      throw new Error("FIREBASE_SERVICE_ACCOUNT が設定されていません");
+      throw new Error("Firebase service account is missing in environment variables");
     }
     
     const serviceAccount = JSON.parse(serviceAccountStr);
+    
     admin.initializeApp({
       credential: admin.credential.cert(serviceAccount),
     });
+    
+    console.log("Firebase Admin initialized successfully");
+    return { db: getFirestore(), auth: getAuth() };
+  } catch (error) {
+    console.error("Failed to initialize Firebase Admin:", error);
+    throw error;
   }
-  
-  return admin;
 }
 
 /**
- * Firestore インスタンスを取得する
+ * 便利なエクスポート
  */
-export function getFirestore() {
-  const admin = getFirebaseAdmin();
-  return admin.firestore();
-}
+export const getFirebaseAdmin = () => {
+  return initializeFirebaseAdmin();
+};
 
-/**
- * Firebase Auth インスタンスを取得する
- */
-export function getAuth() {
-  const admin = getFirebaseAdmin();
-  return admin.auth();
-}
+export const getFirestoreDb = () => {
+  return initializeFirebaseAdmin().db;
+};
+
+export const getFirebaseAuth = () => {
+  return initializeFirebaseAdmin().auth;
+};
 
 /**
  * プロジェクト関連のFirestore操作
