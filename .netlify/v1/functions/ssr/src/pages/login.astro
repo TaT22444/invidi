@@ -1,0 +1,59 @@
+---
+// src/pages/login.astro
+import Layout from '../layouts/Layout.astro';
+---
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <title>ログイン</title>
+    <script type="module">
+      // firebase.ts から認証状態の監視関数をインポートして、ログイン済みならトップへ
+      import { onAuthChange } from '../lib/firebase.ts';
+      onAuthChange((user) => {
+        if (user) {
+          window.location.assign('/'); // 既にログイン済みの場合はトップページへ
+        }
+      });
+    </script>
+  </head>
+  <body>
+    <Layout title="ログイン">
+      <h1>ログイン</h1>
+      <form id="login-form">
+        <label>
+          メールアドレス:
+          <input type="email" id="email" required />
+        </label>
+        <br />
+        <label>
+          パスワード:
+          <input type="password" id="password" required />
+        </label>
+        <br />
+        <button type="submit">ログイン</button>
+      </form>
+      <script type="module">
+        import { loginWithEmail } from '../library/firebase.js';
+        const loginForm = document.getElementById('login-form');
+        if (loginForm) {
+          loginForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const email = (document.getElementById('email')).value;
+            const password = (document.getElementById('password')).value;
+            try {
+              // メール／パスワードでログイン
+              const user = await loginWithEmail(email, password);
+              if (user) {
+                // ログイン成功ならトップページへリダイレクト
+                window.location.assign('/');
+              }
+            } catch (error) {
+              console.error('ログインエラー:', error);
+              alert('ログインに失敗しました。');
+            }
+          });
+        }
+      </script>
+    </Layout>
+  </body>
+</html>
