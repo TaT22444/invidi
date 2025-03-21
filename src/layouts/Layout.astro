@@ -1,6 +1,5 @@
 ---
 // src/layouts/Layout.astro
-export const prerender = false;
 
 interface Props {
   title: string;
@@ -52,32 +51,6 @@ import '../styles/global.scss';
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 		<script src="https://www.gstatic.com/firebasejs/9.17.1/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.17.1/firebase-auth-compat.js"></script>
-    <script type="module">
-      // Firebase 設定（環境変数から取得）
-      const firebaseConfig = {
-        apiKey: import.meta.env.PUBLIC_FIREBASE_API_KEY,
-        authDomain: import.meta.env.PUBLIC_FIREBASE_AUTH_DOMAIN,
-        projectId: import.meta.env.PUBLIC_FIREBASE_PROJECT_ID,
-        storageBucket: import.meta.env.PUBLIC_FIREBASE_STORAGE_BUCKET,
-        messagingSenderId: import.meta.env.PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
-        appId: import.meta.env.PUBLIC_FIREBASE_APP_ID,
-      };
-      // Firebase の初期化
-      firebase.initializeApp(firebaseConfig);
-      const auth = firebase.auth();
-      // 認証状態を監視し、ログインしていない場合は /login へリダイレクト
-      auth.onAuthStateChanged((user) => {
-        const accountNameElem = document.getElementById("account_name");
-        const accountBtn = document.getElementById("account_btn");
-        if (user) {
-          accountNameElem.textContent = user.displayName || user.email;
-          accountBtn.setAttribute("href", "/account");
-        } else {
-          accountNameElem.textContent = "ログイン";
-          accountBtn.setAttribute("href", "/login");
-        }
-      });
-    </script>
 		<!-- <meta property="og:url" content={URL} />
     <meta property="og:title" content={ogptitle} />
     <meta property="og:description" content={description} />
@@ -398,30 +371,30 @@ import '../styles/global.scss';
 </style>
 
 <script client:load type="module">
-	const firebaseConfig = {
-		apiKey: import.meta.env.PUBLIC_FIREBASE_API_KEY,
-		authDomain: import.meta.env.PUBLIC_FIREBASE_AUTH_DOMAIN,
-		projectId: import.meta.env.PUBLIC_FIREBASE_PROJECT_ID,
-		storageBucket: import.meta.env.PUBLIC_FIREBASE_STORAGE_BUCKET,
-		messagingSenderId: import.meta.env.PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
-		appId: import.meta.env.PUBLIC_FIREBASE_APP_ID,
-	};
-	// Firebase の初期化（すでに初期化済みの場合はスキップ）
-	if (!firebase.apps.length) {
-		firebase.initializeApp(firebaseConfig);
-	}
-	const auth = firebase.auth();
-	auth.onAuthStateChanged(user => {
-		const accountNameElem = document.getElementById("account_name");
-		const accountBtn = document.getElementById("account_btn");
-		if (user) {
-			// ユーザーがログインしていれば、displayName（なければ email）を表示し、リンク先を /account に変更
-			accountNameElem.textContent = user.displayName || user.email;
-			accountBtn.setAttribute("href", "/account");
-		} else {
-			// 未ログインの場合は「ログイン」と表示し、リンク先は /login のまま
-			accountNameElem.textContent = "ログイン";
-			accountBtn.setAttribute("href", "/login");
-		}
-	});
+  const firebaseConfig = {
+    apiKey: import.meta.env.PUBLIC_FIREBASE_API_KEY,
+    authDomain: import.meta.env.PUBLIC_FIREBASE_AUTH_DOMAIN,
+    projectId: import.meta.env.PUBLIC_FIREBASE_PROJECT_ID,
+    storageBucket: import.meta.env.PUBLIC_FIREBASE_STORAGE_BUCKET,
+    messagingSenderId: import.meta.env.PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
+    appId: import.meta.env.PUBLIC_FIREBASE_APP_ID,
+  };
+  // Firebase の初期化（すでに初期化済みの場合はスキップ）
+  if (!firebase.apps.length) {
+    firebase.initializeApp(firebaseConfig);
+  }
+  const auth = firebase.auth();
+  auth.onAuthStateChanged(user => {
+    const accountNameElem = document.getElementById("account_name");
+    const accountBtn = document.getElementById("account_btn");
+    if (user) {
+      // ユーザーがログインしていれば、displayName（なければ email）を表示し、リンク先を /account に変更
+      accountNameElem.textContent = user.displayName || user.email;
+      accountBtn.setAttribute("href", "/account");
+    } else {
+      // 未ログインの場合は「ログイン」と表示し、リンク先は /login のまま
+      accountNameElem.textContent = "ログイン";
+      accountBtn.setAttribute("href", "/login");
+    }
+  });
 </script>
