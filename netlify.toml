@@ -18,7 +18,7 @@
 # SPAフォールバック（クライアントサイドルーティング用）
 [[redirects]]
   from = "/*"
-  to = "/index.html"
+  to = "/index.astro"
   status = 200
   force = false
 
