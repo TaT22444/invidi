@@ -1,7 +1,7 @@
 // @ts-check
 import { defineConfig } from 'astro/config';
 import react from '@astrojs/react';
-import node from '@astrojs/node';
+import netlify from '@astrojs/netlify/functions';
 
 // https://astro.build/config
 export default defineConfig({
@@ -10,10 +10,6 @@ export default defineConfig({
       // ここにオプションを指定可能。通常は空でOK
     }),
   ],
-  output: 'server',   // ここが重要 (デフォルトは 'static')
-  adapter: node({
-    // どの形式で出力するか: 'standalone' や 'server', 'edge' など
-    // （例）以下はNodeのポータブルなサーバーをビルド出力
-    mode: 'standalone',
-  }),
+  output: 'server',   // SSRモードは維持
+  adapter: netlify(),  // Netlify用アダプターに変更
 });
