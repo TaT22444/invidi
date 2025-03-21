@@ -1,0 +1,638 @@
+---
+// プロパティを受け取るように修正
+interface Props {
+  existingNewsTags: string[];
+  noticeList: any[];
+}
+
+const { existingNewsTags, noticeList } = Astro.props;
+---
+
+<div class="cms_box cms-panel" id="notice-panel" style="display: block;">
+  <section class="box">
+    <div class="inner">
+      <!-- <div class="cms"> -->
+      <form class="cms" method="POST" enctype="multipart/form-data">
+        <input type="hidden" name="action" value="create_notice" />
+        <div class="cms-header">
+          <p class="cms-header_title">お知らせ</p>
+          <div class="box_btn_wrapper">
+            <button type="submit" class="box_btn">下書き保存</button>
+            <button type="submit" id="save-btn"  class="box_btn save">投稿</button>
+          </div>
+        </div>
+        <!-- <form class="cms-body" method="POST"> -->
+        <div class="cms-body">
+          <div class="cms-body_input-wrapper">
+            <label for="news-title">タイトル</label>
+            <input type="text" id="news-title" name="newsTitle" placeholder="タイトルを入力してください">
+          </div>
+          <div class="cms-body_input-wrapper">
+            <label for="news-text">本文</label>
+            <textarea id="news-text" name="newsBody" placeholder="お知らせの本文を入力してください"></textarea>
+          </div>
+          <fieldset id="tag-fieldset">
+            <p class="label">タグ</p>
+              {existingNewsTags.map((tag: unknown) => (
+                <div class="cms-body_wrapper" data-key={String(tag)}>
+                  <input
+                    type="checkbox"
+                    id={`news-tag-${tag}`}
+                    name="newsTags"
+                    value={String(tag)}
+                  />
+                  <label for={`news-tag-${tag}`}>{tag}</label>
+                </div>
+              ))}
+            <button type="button" id="addNewsBtn" class="cms-body_wrapper_btn">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M18 12.998H13V17.998C13 18.2633 12.8946 18.5176 12.7071 18.7052C12.5196 18.8927 12.2652 18.998 12 18.998C11.7348 18.998 11.4804 18.8927 11.2929 18.7052C11.1054 18.5176 11 18.2633 11 17.998V12.998H6C5.73478 12.998 5.48043 12.8927 5.29289 12.7052C5.10536 12.5176 5 12.2633 5 11.998C5 11.7328 5.10536 11.4785 5.29289 11.2909C5.48043 11.1034 5.73478 10.998 6 10.998H11V5.99805C11 5.73283 11.1054 5.47848 11.2929 5.29094C11.4804 5.1034 11.7348 4.99805 12 4.99805C12.2652 4.99805 12.5196 5.1034 12.7071 5.29094C12.8946 5.47848 13 5.73283 13 5.99805V10.998H18C18.2652 10.998 18.5196 11.1034 18.7071 11.2909C18.8946 11.4785 19 11.7328 19 11.998C19 12.2633 18.8946 12.5176 18.7071 12.7052C18.5196 12.8927 18.2652 12.998 18 12.998Z" fill="white"/>
+              </svg>
+              <p>タグを追加(2/5)</p>
+            </button>
+          </fieldset>
+        <!-- </form> -->
+        </div>
+      <!-- </div> -->
+      </form>
+    </div>
+  </section>
+  <section class="posted">
+    <h2 class="posted_label">お知らせ一覧</h2>
+    <div class="option_box">
+      <div class="subject_wrapper" id="notice-status-wrapper">
+        <button class="active">公開</button>
+        <button>下書き</button>
+      </div>
+      <div class="option_wrapper" id="notice-option-wrapper">
+        <div class="option">
+          <input type="radio" checked id="notice-tag-all" name="notice-option" value="すべて">
+          <label for="notice-tag-all">すべて</label>
+        </div>
+        {existingNewsTags.map((tag, index) => (
+          <div class="option">
+            <input type="radio" id={`notice-tag-${index}`} name="notice-option" value={tag}>
+            <label for={`notice-tag-${index}`}>{tag}</label>
+          </div>
+        ))}
+      </div>
+    </div>
+    <ul class="posted_list">
+      {noticeList.length > 0 ? (
+        noticeList.map((item) => (
+          <li class="posted_item" key={item.id} data-status={item.status || 'public'} data-tags={JSON.stringify(item.tags || [])}>
+            <div class="posted_item_info">
+              <p>
+                <span>
+                  {item.tags && item.tags.length > 0
+                    ? item.tags.join(", ")
+                    : "未分類"}
+                </span>
+                <span class="slash"></span>
+                <span>{item.dateStr}</span>
+              </p>
+              <h4 class="posted_item_title">
+                {item.title || "(無題)"}
+              </h4>
+            </div>
+            <div class="posted_item_btns">
+          <button class="posted_item_btn delete" data-notice-id={item.id}>
+            <svg width="16" height="16" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M8.33268 5.00033H11.666C11.666 4.5583 11.4904 4.13437 11.1779 3.82181C10.8653 3.50925 10.4414 3.33366 9.99935 3.33366C9.55732 3.33366 9.1334 3.50925 8.82084 3.82181C8.50828 4.13437 8.33268 4.5583 8.33268 5.00033ZM6.66602 5.00033C6.66602 4.11627 7.0172 3.26842 7.64233 2.6433C8.26745 2.01818 9.11529 1.66699 9.99935 1.66699C10.8834 1.66699 11.7313 2.01818 12.3564 2.6433C12.9815 3.26842 13.3327 4.11627 13.3327 5.00033H17.4993C17.7204 5.00033 17.9323 5.08812 18.0886 5.2444C18.2449 5.40068 18.3327 5.61265 18.3327 5.83366C18.3327 6.05467 18.2449 6.26663 18.0886 6.42291C17.9323 6.57919 17.7204 6.66699 17.4993 6.66699H16.7643L16.026 15.2837C15.955 16.1157 15.5743 16.8908 14.9592 17.4556C14.3441 18.0204 13.5394 18.3338 12.7043 18.3337H7.29435C6.45927 18.3338 5.65458 18.0204 5.03947 17.4556C4.42437 16.8908 4.04366 16.1157 3.97268 15.2837L3.23435 6.66699H2.49935C2.27834 6.66699 2.06637 6.57919 1.91009 6.42291C1.75381 6.26663 1.66602 6.05467 1.66602 5.83366C1.66602 5.61265 1.75381 5.40068 1.91009 5.2444C2.06637 5.08812 2.27834 5.00033 2.49935 5.00033H6.66602ZM12.4993 10.0003C12.4993 9.77931 12.4116 9.56735 12.2553 9.41107C12.099 9.25479 11.887 9.16699 11.666 9.16699C11.445 9.16699 11.233 9.25479 11.0768 9.41107C10.9205 9.56735 10.8327 9.77931 10.8327 10.0003V13.3337C10.8327 13.5547 10.9205 13.7666 11.0768 13.9229C11.233 14.0792 11.445 14.167 11.666 14.167C11.887 14.167 12.099 14.0792 12.2553 13.9229C12.4116 13.7666 12.4993 13.5547 12.4993 13.3337V10.0003ZM8.33268 9.16699C8.5537 9.16699 8.76566 9.25479 8.92194 9.41107C9.07822 9.56735 9.16602 9.77931 9.16602 10.0003V13.3337C9.16602 13.5547 9.07822 13.7666 8.92194 13.9229C8.76566 14.0792 8.5537 14.167 8.33268 14.167C8.11167 14.167 7.89971 14.0792 7.74343 13.9229C7.58715 13.7666 7.49935 13.5547 7.49935 13.3337V10.0003C7.49935 9.77931 7.58715 9.56735 7.74343 9.41107C7.89971 9.25479 8.11167 9.16699 8.33268 9.16699ZM5.63268 15.142C5.66819 15.5582 5.85866 15.9458 6.16638 16.2283C6.47411 16.5107 6.87667 16.6673 7.29435 16.667H12.7043C13.1217 16.6668 13.5239 16.5101 13.8313 16.2277C14.1386 15.9453 14.3289 15.5579 14.3643 15.142L15.091 6.66699H4.90768L5.63268 15.142Z" fill="#C4C4C4"/>
+            </svg>                                  
+          </button>
+          <button class="posted_item_btn">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path fill-rule="evenodd" clip-rule="evenodd" d="M21.4559 5.41632C21.5509 5.56052 21.5932 5.7331 21.5757 5.9049C21.5582 6.07671 21.482 6.23721 21.3599 6.35932L12.1669 15.5513C12.0728 15.6453 11.9555 15.7126 11.8269 15.7463L7.99787 16.7463C7.8713 16.7793 7.7383 16.7787 7.61206 16.7444C7.48583 16.7101 7.37076 16.6434 7.27826 16.5509C7.18577 16.4584 7.11908 16.3434 7.0848 16.2171C7.05053 16.0909 7.04986 15.9579 7.08287 15.8313L8.08287 12.0033C8.11277 11.8887 8.16776 11.7821 8.24387 11.6913L17.4709 2.47032C17.6115 2.32987 17.8021 2.25098 18.0009 2.25098C18.1996 2.25098 18.3902 2.32987 18.5309 2.47032L21.3599 5.29832C21.3948 5.33516 21.4269 5.3746 21.4559 5.41632ZM19.7689 5.82832L18.0009 4.06132L9.48287 12.5793L8.85787 14.9723L11.2509 14.3473L19.7689 5.82832Z" fill="#C4C4C4"/>
+              <path d="M19.641 17.1601C19.9143 14.824 20.0016 12.47 19.902 10.1201C19.8997 10.0647 19.9089 10.0094 19.929 9.95778C19.9491 9.90614 19.9798 9.85925 20.019 9.82008L21.003 8.83608C21.0299 8.80904 21.064 8.79033 21.1013 8.78222C21.1385 8.77411 21.1774 8.77693 21.2131 8.79034C21.2488 8.80375 21.2798 8.82719 21.3025 8.85783C21.3252 8.88847 21.3386 8.92502 21.341 8.96308C21.5257 11.7543 21.4554 14.5566 21.131 17.3351C20.895 19.3571 19.271 20.9421 17.258 21.1671C13.7633 21.5538 10.2367 21.5538 6.74201 21.1671C4.73001 20.9421 3.10501 19.3571 2.86901 17.3351C2.45512 13.7905 2.45512 10.2097 2.86901 6.66508C3.10501 4.64308 4.72901 3.05808 6.74201 2.83308C9.39446 2.54012 12.0667 2.46888 14.731 2.62008C14.7691 2.62281 14.8057 2.63642 14.8363 2.65929C14.867 2.68215 14.8904 2.71332 14.9039 2.7491C14.9173 2.78487 14.9203 2.82376 14.9123 2.86115C14.9044 2.89854 14.8859 2.93287 14.859 2.96008L13.866 3.95208C13.8272 3.99092 13.7808 4.02136 13.7297 4.04149C13.6786 4.06162 13.6239 4.07101 13.569 4.06908C11.3458 3.99293 9.11993 4.07815 6.90901 4.32408C6.26295 4.39558 5.65986 4.6828 5.19717 5.13933C4.73447 5.59586 4.43919 6.19504 4.35901 6.84008C3.95787 10.2684 3.95787 13.7318 4.35901 17.1601C4.43919 17.8051 4.73447 18.4043 5.19717 18.8608C5.65986 19.3174 6.26295 19.6046 6.90901 19.6761C10.264 20.0511 13.736 20.0511 17.092 19.6761C17.7381 19.6046 18.3412 19.3174 18.8039 18.8608C19.2666 18.4043 19.5608 17.8051 19.641 17.1601Z" fill="#C4C4C4"/>
+            </svg>                          
+          </button>
+          <button class="posted_item_open">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <g clip-path="url(#clip0_623_115)">
+              <path fill-rule="evenodd" clip-rule="evenodd" d="M10.4712 7.52879C10.5962 7.65381 10.6664 7.82334 10.6664 8.00012C10.6664 8.1769 10.5962 8.34644 10.4712 8.47145L6.6999 12.2428C6.63841 12.3065 6.56484 12.3572 6.48351 12.3922C6.40217 12.4271 6.31469 12.4455 6.22617 12.4463C6.13765 12.4471 6.04986 12.4302 5.96793 12.3967C5.886 12.3631 5.81157 12.3136 5.74897 12.251C5.68638 12.1885 5.63688 12.114 5.60336 12.0321C5.56983 11.9502 5.55297 11.8624 5.55374 11.7739C5.55451 11.6853 5.5729 11.5979 5.60784 11.5165C5.64277 11.4352 5.69356 11.3616 5.75724 11.3001L9.05724 8.00012L5.75724 4.70012C5.6358 4.57439 5.5686 4.40598 5.57012 4.23119C5.57164 4.05639 5.64175 3.88918 5.76536 3.76557C5.88896 3.64197 6.05617 3.57186 6.23097 3.57034C6.40577 3.56882 6.57417 3.63601 6.6999 3.75745L10.4712 7.52879Z" fill="white"/>
+              </g>
+              <defs>
+              <clipPath id="clip0_623_115">
+              <rect width="16" height="16" fill="white"/>
+              </clipPath>
+              </defs>
+            </svg>                
+          </button>
+        </div>
+          </li>
+        ))
+      ) : (
+        <li>お知らせはありません</li>
+      )}
+    </ul>
+  </section>
+</div>
+
+<style lang="scss">
+  .cms-box{
+    width: 100%;
+		background-color: var(--sub-bg-color);
+		border: 1px solid var(--main-border-color);
+		border-radius: var(--border-radius-m);
+		margin-top: 16px;
+
+    >.inner{
+			padding: 16px 16px 16px 24px;
+		}
+  }
+
+  .box{
+		width: calc(100% - 32px);
+    margin-inline: 16px;
+		background-color: var(--sub-bg-color);
+		border: 1px solid var(--main-border-color);
+		border-radius: var(--border-radius-m);
+		margin-top: 8px;
+
+		&:first-of-type{
+			margin-top: 16px;
+		}
+
+		>.inner{
+			padding: 16px;
+		}
+
+    &_title-wrapper{
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 16px;
+
+      &_left{
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+
+        >.box_title{
+          font-size: var(--font-size-l);
+          font-weight: 500;
+          color: var(--main-font-color);
+        }
+      }
+
+      &_right{
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 16px;
+        padding: 16px;
+        background-color: var(--btn-bg-color);
+        border-radius: var(--border-radius-m);
+        border: 1px solid var(--main-border-color);
+
+        &_label{
+          font-size: var(--font-size-xxs);
+          color: var(--sub-font-color);
+
+          >strong{
+            margin-left: 8px;
+          }
+        }
+
+        &_btn{
+          padding: 12px 16px;
+          background-color: var(--accent-bg-color);
+          border-radius: var(--border-radius-m);
+          color: var(--main-font-color);
+          font-size: var(--font-size-xxs);
+        }
+      }
+    }
+
+    &_cms{
+      margin-top: 16px;
+
+      >p{
+        color: var(--sub-font-color);
+        font-size: var(--font-size-xs);
+      }
+
+      &_number{
+        height: 40px;
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        font-size: var(--font-size-xxs);
+        color: var(--main-font-color);
+        border: 1px solid var(--main-border-color);
+        border-radius: var(--border-radius-m);
+        // background-color: var(--item-bg-color);
+        padding: 0 12px;
+      }
+
+      &-list{
+        margin-top: 16px;
+        display: flex;
+        gap: 8px;
+        align-items: center;
+
+        >.active{
+          background-color: var(--item-bg-color);
+          color: var(--main-font-color);
+          border: 1px solid var(--main-border-color);
+        }
+      }
+
+      &-item{
+        display: flex;
+        align-items: center;
+        height: 40px;
+        padding: 0 16px;
+        border-radius: var(--border-radius-m);
+        color: var(--sub-font-color);
+        font-size: var(--font-size-xs);
+        cursor: pointer;
+      }
+    }
+
+    &_header{
+      margin-top: 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    &_desc{
+      font-size: var(--font-size-xs);
+      font-weight: 400;
+      color: var(--sub-font-color);
+    }
+
+    &_label{
+      font-size: var(--font-size-s);
+      color: var(--main-font-color);
+    }
+
+    &_btn{
+      padding: 12px 16px;
+      border-radius: var(--border-radius-m);
+      font-size: var(--font-size-xxs);
+      color: var(--main-font-color);
+      border: 1px solid var(--sub-border-color);
+
+      &_wrapper{
+        display: flex;
+        align-items: center;
+        gap: 8px;
+
+        >.save{
+          color: var(--main-font-color);
+          background-color: var(--accent-bg-color);
+          border: 1px solid var(--accent-bg-color);
+        }
+      }
+    }
+  }
+
+  .contents{
+    width: calc(100% - 32px);
+    margin-top: 40px;
+    margin-inline: 16px;
+    padding-top: 40px;
+    border-top: 1px solid var(--main-border-color);
+  }
+  .posted{
+    width: calc(100% - 32px);
+    margin-top: 40px;
+    padding-top: 40px;
+    margin-inline: 16px;
+    border-top: 1px solid var(--main-border-color);
+
+    &_label{
+      font-size: var(--font-size-s);
+      color: var(--main-font-color);
+    }
+
+    &_blog{
+
+      &-list{
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+        row-gap: 24px;
+        column-gap: 16px;
+        margin-top: 24px;
+      }
+
+      &-item{
+        cursor: pointer;
+
+        >img{
+          width: 100%;
+          aspect-ratio: 16/9;
+          object-fit: cover;
+          border-radius: var(--border-radius-s);
+        }
+        >p{
+          margin-top: 8px;
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          color: var(--sub-font-color);
+          font-size: var(--font-size-xxs);
+
+          >.slash{
+            width: 1px;
+            height: 12px;
+            background-color: var(--sub-border-color);
+          }
+        }
+        >h4{
+          margin-top: 8px;
+          font-size: var(--font-size-s);
+          color: var(--main-font-color);
+        }
+
+        &_btns{
+          margin-top: 8px;
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          justify-content: right;
+        }
+      }
+    }
+
+    &_list{
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      margin-top: 24px;
+    }
+
+    &_item{
+      padding: 16px;
+      border-radius: var(--border-radius-m);
+      background-color: var(--sub-bg-color);
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      cursor: pointer;
+
+      &_title{
+        font-size: var(--font-size-s);
+        color: var(--main-font-color);
+      }
+
+      &_info{
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+
+        >p{
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          font-size: var(--font-size-xs);
+          color: var(--sub-font-color);
+
+          >.slash{
+            width: 1px;
+            height: 12px;
+            background-color: var(--sub-border-color);
+          }
+        }
+      }
+
+      &_btns{
+        display: flex;
+        align-items: center;
+        gap: 8px;
+
+        >button{
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          border-radius: var(--border-radius-s);
+        }
+      }
+
+      &_btn{
+        width: 32px;
+        height: 32px;
+        background-color: var(--btn-bg-color);
+        border: 1px solid var(--main-border-color);
+      }
+    }
+  }
+
+  .info_number_wrapper{
+    margin-top: 16px;
+    display: flex;
+    align-items: center;
+    gap: 24px;
+  }
+
+  .info_number{
+    color: var(--sub-font-color);
+    font-size: var(--font-size-xs);
+
+    >.number{
+      font-weight: 500;
+      color: var(--main-font-color);
+      font-size: var(--font-size-s);
+    }
+  }
+
+  .option_box{
+    margin-top: 24px;
+  }
+
+  .subject_wrapper{
+    display: flex;
+    align-items: center;
+    gap: 8px;
+
+    >.active{
+      background-color: var(--item-bg-color);
+      color: var(--main-font-color);
+    }
+
+    >button{
+      padding: 8px 16px;
+      border: 1px solid var(--main-border-color);
+      border-radius: var(--border-radius-s);
+      font-size: var(--font-size-xs);
+      color: var(--sub-font-color);
+    }
+  }
+
+  .option_wrapper{
+    margin-top: 16px;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+  }
+
+  .option{
+    display: flex;
+    align-items: center;
+
+    >input{
+      margin-right: 8px;
+    }
+    >svg{
+      margin-right: 4px;
+    }
+    >label{
+      color: var(--main-font-color);
+      font-size: var(--font-size-xs);
+    }
+  }
+
+
+  .box_action_btns{
+    position: absolute;
+    right: 16px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .item_action_btns{
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-left: 8px;
+    margin-top: 2px;
+  }
+
+  .subject_label{
+    font-size: var(--font-size-xs);
+    color: var(--main-font-color);
+  }
+  
+  .visibox{
+    position: absolute;
+    right: 16px;
+    display: flex;
+    // align-items: center;
+    gap: 4px;
+
+    >label{
+      font-size: var(--font-size-xxs);
+      color: var(--sub-font-color);
+    }
+    >input{
+      border: none;
+    }
+  }
+
+  .option{
+    display: flex;
+    align-items: center;
+
+    >input{
+      margin-right: 8px;
+    }
+    >svg{
+      margin-right: 4px;
+    }
+    >label{
+      color: var(--main-font-color);
+      font-size: var(--font-size-xs);
+    }
+  }
+
+  /* モーダルのスタイル */
+  .modal {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.5);
+    z-index: 1000;
+    
+    &_content {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      background-color: var(--sub-bg-color);
+      padding: 24px;
+      border-radius: var(--border-radius-m);
+      width: 90%;
+      max-width: 400px;
+      
+      h3 {
+        color: var(--main-font-color);
+        font-size: var(--font-size-l);
+        margin-bottom: 16px;
+      }
+      
+      p {
+        color: var(--sub-font-color);
+        font-size: var(--font-size-m);
+        margin-bottom: 8px;
+      }
+      
+      .modal_confirm {
+        margin: 24px 0;
+        
+        .modal_project-id {
+          font-weight: bold;
+          color: var(--main-font-color);
+          margin: 8px 0;
+        }
+        
+        .modal_input {
+          width: 100%;
+          padding: 8px 16px;
+          margin: 8px 0;
+          background: var(--item-bg-color);
+          border: 1px solid var(--main-border-color);
+          border-radius: var(--border-radius-s);
+          color: var(--main-font-color);
+          
+          &:focus {
+            outline: none;
+            border-color: var(--accent-bg-color);
+          }
+        }
+        
+        .modal_error {
+          color: var(--delete-bg-color);
+          font-size: var(--font-size-s);
+          min-height: 20px;
+        }
+      }
+    }
+    
+    &_buttons {
+      display: flex;
+      gap: 16px;
+      margin-top: 24px;
+      justify-content: flex-end;
+    }
+    
+    &_button {
+      padding: 8px 24px;
+      border-radius: var(--border-radius-s);
+      font-size: var(--font-size-m);
+      cursor: pointer;
+      
+      &.cancel {
+        background-color: var(--elem-bg-color);
+        color: var(--main-font-color);
+      }
+      
+      &.delete {
+        background-color: var(--delete-bg-color);
+        color: var(--main-font-color);
+        
+        &:disabled {
+          opacity: 0.5;
+          cursor: not-allowed;
+        }
+      }
+    }
+  }
+</style>

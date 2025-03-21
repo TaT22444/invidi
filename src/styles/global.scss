@@ -1,0 +1,38 @@
+/* src/styles/global.scss */
+:root {
+  --mian-bg-color: #24242A;
+  --sub-bg-color: #2B2B32;
+  --item-bg-color: #32323C;
+  --elem-bg-color: #404048;
+  --btn-bg-color: #24242A;
+  --accent-bg-color: #4E41E5;
+  --accent2-bg-color: #468FDD;
+  --delete-bg-color: #bd1717;
+
+  --main-font-color: #fff;
+  --sub-font-color: #C4C4C4;
+  --elem-font-color: #808080;
+
+  --main-border-color: #3C3C40;
+  --sub-border-color: #808080;
+
+  --font-size-xxl: 32px;
+  --font-size-xl: 24px;
+  --font-size-l: 20px;
+  --font-size-m: 16px;
+  --font-size-s: 14px;
+  --font-size-xs: 12px;
+  --font-size-xxs: 10px;
+
+  --border-radius-l: 24px;
+  --border-radius-m: 16px;
+  --border-radius-s: 8px;
+
+  --font-family-ja: 'Noto Sans JP', sans-serif;
+  --font-family-en: 'Dela Gothic One', cursive;
+}
+
+body {
+  font-family: var(--font-family-ja);
+  background-color: var(--mian-bg-color);
+}

@@ -1,0 +1,902 @@
+---
+export const prerender = false;
+import Layout from '../../../layouts/Layout.astro';
+import "../../../styles/form.css"
+
+import admin from "firebase-admin";
+
+// Firebase Admin SDK の初期化（初回のみ実施）
+if (!admin.apps.length) {
+  const serviceAccountStr =
+    process.env.FIREBASE_SERVICE_ACCOUNT || import.meta.env.FIREBASE_SERVICE_ACCOUNT;
+  console.log("Service Account:", serviceAccountStr);
+  const serviceAccount = JSON.parse(serviceAccountStr!);
+  
+  admin.initializeApp({
+    credential: admin.credential.cert(serviceAccount),
+  });
+}
+const adminAuth = admin.auth();
+const db = admin.firestore();
+
+// Cookie ヘッダーから "token" をパースする
+const cookieHeader = Astro.request.headers.get("cookie") || "";
+const cookies = Object.fromEntries(
+  cookieHeader.split("; ").filter(Boolean).map(c => {
+    const [key, ...v] = c.split("=");
+    return [key, v.join("=")];
+  })
+);
+const token = cookies["token"] || "";
+let authUser = null;
+if (token) {
+  try {
+    authUser = await adminAuth.verifyIdToken(token);
+  } catch (err) {
+    console.error("IDトークンの検証に失敗しました", err);
+  }
+}
+
+// Firestore からユーザーの登録情報を取得（ログイン中の場合）
+let userData = null;
+if (authUser) {
+  const userSnap = await db.collection("users").doc(authUser.uid).get();
+  if (userSnap.exists) {
+    userData = userSnap.data();
+  } else {
+    console.error("ユーザーデータが存在しません", authUser.uid);
+  }
+}
+
+// ここで accountName を設定（ログイン中なら displayName、未ログインなら "ログイン"）
+const accountName = authUser && userData && userData.displayName
+  ? userData.displayName
+  : "ログイン";
+
+const projects = userData && userData.projects ? userData.projects : [];
+
+let postError = "";
+let defaultFormMode = "login";
+
+const method = Astro.request.method.toUpperCase();
+if (method === "POST") {
+  const formData = await Astro.request.formData();
+  const action = formData.get("action")?.toString() || "";
+
+  if (action === "login") {
+    // ログイン処理：Firebase Auth REST API を使ってサインイン
+    const email = formData.get("email")?.toString() || "";
+    const password = formData.get("password")?.toString() || "";
+    const apiKey = import.meta.env.PUBLIC_FIREBASE_API_KEY;
+    const res = await fetch(
+      `https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${apiKey}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email,
+          password,
+          returnSecureToken: true,
+        }),
+      }
+    );
+    const data = await res.json();
+    if (data.error) {
+      console.error("[Login Error]", data.error);
+      postError = "ログインに失敗しました";
+    } else {
+      return new Response(null, {
+        status: 303,
+        headers: {
+          "Set-Cookie": `token=${data.idToken}; Path=/; HttpOnly`,
+          Location: "/",
+        },
+      });
+    }
+  } else if (action === "register") {
+    // 新規登録処理：Admin SDK を使ってユーザー作成し、Firestore にユーザーデータを保存
+    const email = formData.get("email")?.toString() || "";
+    const password = formData.get("password")?.toString() || "";
+		const confirmPassword = formData.get("confirmPassword")?.toString() || "";
+    const displayName = formData.get("displayName")?.toString() || "";
+    const bio = formData.get("bio")?.toString() || "";
+    // パスワード一致チェック
+    if (password !== confirmPassword) {
+      postError = "パスワードが一致しません";
+			defaultFormMode = "register";
+    } else {
+      try {
+        const userRecord = await adminAuth.createUser({
+          email,
+          password,
+          displayName,
+        });
+        await db.collection("users").doc(userRecord.uid).set({
+          displayName,
+          email,
+          bio,
+          plan: "free",    // デフォルトはフリープラン
+          projects: []     // 初期はプロジェクト未登録
+        });
+        const customToken = await adminAuth.createCustomToken(userRecord.uid);
+        return new Response(null, {
+          status: 303,
+          headers: {
+            "Set-Cookie": `token=${customToken}; Path=/; HttpOnly`,
+            Location: "/",
+          },
+        });
+      } catch (err) {
+        console.error("[Register Error]", err);
+        postError = "登録に失敗しました";
+      }
+    }
+  } else if (action === "logout") {
+    // ログアウト：Cookie をクリア
+    return new Response(null, {
+      status: 303,
+      headers: {
+        "Set-Cookie": `token=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT`,
+        Location: "/",
+      },
+    });
+  } else if (action === "create_project") {
+    // 新しいプロジェクトの作成処理
+    if (!authUser) {
+      postError = "ログインしてください";
+    } else {
+      const projectName = formData.get("projectName")?.toString() || "";
+      const projectDescription = formData.get("projectDescription")?.toString() || "";
+      // 初期値としてフォロワー数 0、現在のページ 0、最大ページ 3 を設定
+      const newProject = {
+        name: projectName,
+        description: projectDescription,
+        followers: 0,
+        currentPages: 0,
+        maxPages: 3,
+        createdAt: new Date()
+      };
+      const userRef = db.collection("users").doc(authUser.uid);
+      const userSnap = await userRef.get();
+      if (userSnap.exists) {
+        const currentProjects = userSnap.data().projects || [];
+        currentProjects.push(newProject);
+        await userRef.update({ projects: currentProjects });
+        return new Response(null, {
+          status: 303,
+          headers: { Location: "/" },
+        });
+      } else {
+        postError = "ユーザーデータが見つかりません";
+      }
+    }
+  }
+}
+
+const { projectId } = Astro.params;
+
+let currentProject = null;
+if (userData && userData.projects) {
+  currentProject = userData.projects.find((p: { id: any; }) => p.id === projectId);
+}
+
+if (!currentProject) {
+  console.error("該当のプロジェクトが見つかりません");
+  return new Response(null, {
+    status: 303,
+    headers: { Location: "/" },
+  });
+}
+
+const userId = authUser?.uid || "";
+---
+
+<Layout title="Form" userId={userId} accountName={accountName} projects={userData?.projects ?? []}>
+  <div class="pan">
+    <p class="pan_item">
+      <a href={userId ? `/${userId}` : "/"}>トップ</a>
+      <span>
+        <svg width="7" height="7" viewBox="0 0 7 7" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M0.456 6.356V5.18L3.156 4.208L4.98 3.548V3.5L3.156 2.828L0.456 1.856V0.692L6.384 2.996V4.04L0.456 6.356Z" fill="#C4C4C4"/>
+        </svg>          
+      </span>
+      <span>{currentProject?.name || "(No Name)"}</span>
+      <span>
+        <svg width="7" height="7" viewBox="0 0 7 7" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M0.456 6.356V5.18L3.156 4.208L4.98 3.548V3.5L3.156 2.828L0.456 1.856V0.692L6.384 2.996V4.04L0.456 6.356Z" fill="#C4C4C4"/>
+        </svg>          
+      </span>
+      <span>フォーム</span>
+    </p>
+  </div>
+  <nav class="nav">
+    <button class="nav_btn">
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <g clip-path="url(#clip0_623_115)">
+        <path fill-rule="evenodd" clip-rule="evenodd" d="M10.4712 7.52879C10.5962 7.65381 10.6664 7.82334 10.6664 8.00012C10.6664 8.1769 10.5962 8.34644 10.4712 8.47145L6.6999 12.2428C6.63841 12.3065 6.56484 12.3572 6.48351 12.3922C6.40217 12.4271 6.31469 12.4455 6.22617 12.4463C6.13765 12.4471 6.04986 12.4302 5.96793 12.3967C5.886 12.3631 5.81157 12.3136 5.74897 12.251C5.68638 12.1885 5.63688 12.114 5.60336 12.0321C5.56983 11.9502 5.55297 11.8624 5.55374 11.7739C5.55451 11.6853 5.5729 11.5979 5.60784 11.5165C5.64277 11.4352 5.69356 11.3616 5.75724 11.3001L9.05724 8.00012L5.75724 4.70012C5.6358 4.57439 5.5686 4.40598 5.57012 4.23119C5.57164 4.05639 5.64175 3.88918 5.76536 3.76557C5.88896 3.64197 6.05617 3.57186 6.23097 3.57034C6.40577 3.56882 6.57417 3.63601 6.6999 3.75745L10.4712 7.52879Z" fill="white"/>
+        </g>
+        <defs>
+        <clipPath id="clip0_623_115">
+        <rect width="16" height="16" fill="white"/>
+        </clipPath>
+        </defs>
+      </svg>        
+    </button>
+    <ul class="nav_list">
+      <li class="nav_item">
+        <a href=`/projects/${projectId}` class="nav_link" id="switch-btn">サマリー</a>
+      </li>
+      <li class="nav_item">
+        <a href=`/projects/${projectId}/profile` class="nav_link" id="switch-btn">プロフィール</a>
+      </li>
+      <li class="nav_item">
+        <a href=`/projects/${projectId}/form` class="nav_link active" id="switch-btn">フォーム</a>
+      </li>
+      <li class="nav_item">
+        <a href=`/projects/${projectId}/cms` class="nav_link" id="switch-btn">CMS</a>
+      </li>
+      <li class="nav_item">
+        <a href=`/projects/${projectId}/analitics` class="nav_link" id="switch-btn">アナリティクス</a>
+      </li>
+      <li class="nav_item">
+        <a href=`/projects/${projectId}/preview` class="nav_link" id="switch-btn">プレビュー</a>
+      </li>
+      <li class="nav_item">
+        <a href=`/projects/${projectId}` class="nav_link" id="switch-btn">プレビュー</a>
+      </li>
+    </ul>
+  </nav>
+
+  <div class="container" id="switch">
+    <div class="box_header">
+      <p class="box_desc">お問い合わせセクションのプレビュー・編集ができます。</p>
+      <div class="box_btn_wrapper">
+        <button class="box_btn">キャンセル</button>
+        <button id="save-btn"  class="box_btn save">保存</button>
+      </div>
+    </div>
+    <section class="box">
+      <div class="inner"> 
+        <div class="form">
+          <div class="form-header">
+            <button class="form_btn">
+              <svg width="16" height="17" viewBox="0 0 16 17" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <g clip-path="url(#clip0_628_234)">
+                <path fill-rule="evenodd" clip-rule="evenodd" d="M8.47121 10.9712C8.34619 11.0962 8.17666 11.1664 7.99988 11.1664C7.8231 11.1664 7.65356 11.0962 7.52855 10.9712L3.75721 7.1999C3.69354 7.13841 3.64275 7.06484 3.60781 6.98351C3.57287 6.90217 3.55448 6.81469 3.55371 6.72617C3.55294 6.63765 3.56981 6.54986 3.60333 6.46793C3.63685 6.386 3.68635 6.31157 3.74895 6.24897C3.81155 6.18638 3.88598 6.13688 3.96791 6.10336C4.04984 6.06983 4.13763 6.05297 4.22615 6.05374C4.31467 6.05451 4.40215 6.0729 4.48348 6.10784C4.56482 6.14277 4.63838 6.19356 4.69988 6.25724L7.99988 9.55724L11.2999 6.25724C11.4256 6.1358 11.594 6.0686 11.7688 6.07012C11.9436 6.07164 12.1108 6.14175 12.2344 6.26536C12.358 6.38896 12.4281 6.55617 12.4297 6.73097C12.4312 6.90577 12.364 7.07417 12.2425 7.1999L8.47121 10.9712Z" fill="white"/>
+                </g>
+                <defs>
+                <clipPath id="clip0_628_234">
+                <rect width="16" height="16" fill="white" transform="matrix(0 1 -1 0 16 0.5)"/>
+                </clipPath>
+                </defs>
+              </svg>                
+            </button>
+            <div class="form-header_left">
+              <div class="form-header_title_setting">
+                <p class="form-header_title">
+                  <!-- <span class="Ja">お問い合わせ</span>
+                  <span>/</span>
+                  <span class="en">contact</span> -->
+                  <span class="En">Contact</span>
+                  <span>/</span>
+                  <span class="ja">お問い合わせ</span>
+                </p>
+                <span class="form-header_title_lang">
+                  <button class="active">Ja</button>
+                  <span>/</span>
+                  <button>En</button>
+                  <span>/</span>
+                  <button>Ja+en</button>
+                  <span>/</span>
+                  <button>En+ja</button>
+                </span>
+              </div>
+              <div class="form-header_desc">
+                <p id="form-description">フォームの説明が入ります。フォームの説明が入ります。フォームの説明が入ります。フォームの説明が入ります。フォームの説明が入ります。フォームの説明が入ります。</p>
+                <span class="item_action_btns">
+                  <button>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                      <path fill-rule="evenodd" clip-rule="evenodd" d="M21.4559 5.41632C21.5509 5.56052 21.5932 5.7331 21.5757 5.9049C21.5582 6.07671 21.482 6.23721 21.3599 6.35932L12.1669 15.5513C12.0728 15.6453 11.9555 15.7126 11.8269 15.7463L7.99787 16.7463C7.8713 16.7793 7.7383 16.7787 7.61206 16.7444C7.48583 16.7101 7.37076 16.6434 7.27826 16.5509C7.18577 16.4584 7.11908 16.3434 7.0848 16.2171C7.05053 16.0909 7.04986 15.9579 7.08287 15.8313L8.08287 12.0033C8.11277 11.8887 8.16776 11.7821 8.24387 11.6913L17.4709 2.47032C17.6115 2.32987 17.8021 2.25098 18.0009 2.25098C18.1996 2.25098 18.3902 2.32987 18.5309 2.47032L21.3599 5.29832C21.3948 5.33516 21.4269 5.3746 21.4559 5.41632ZM19.7689 5.82832L18.0009 4.06132L9.48287 12.5793L8.85787 14.9723L11.2509 14.3473L19.7689 5.82832Z" fill="#C4C4C4"/>
+                      <path d="M19.641 17.1601C19.9143 14.824 20.0016 12.47 19.902 10.1201C19.8997 10.0647 19.9089 10.0094 19.929 9.95778C19.9491 9.90614 19.9798 9.85925 20.019 9.82008L21.003 8.83608C21.0299 8.80904 21.064 8.79033 21.1013 8.78222C21.1385 8.77411 21.1774 8.77693 21.2131 8.79034C21.2488 8.80375 21.2798 8.82719 21.3025 8.85783C21.3252 8.88847 21.3386 8.92502 21.341 8.96308C21.5257 11.7543 21.4554 14.5566 21.131 17.3351C20.895 19.3571 19.271 20.9421 17.258 21.1671C13.7633 21.5538 10.2367 21.5538 6.74201 21.1671C4.73001 20.9421 3.10501 19.3571 2.86901 17.3351C2.45512 13.7905 2.45512 10.2097 2.86901 6.66508C3.10501 4.64308 4.72901 3.05808 6.74201 2.83308C9.39446 2.54012 12.0667 2.46888 14.731 2.62008C14.7691 2.62281 14.8057 2.63642 14.8363 2.65929C14.867 2.68215 14.8904 2.71332 14.9039 2.7491C14.9173 2.78487 14.9203 2.82376 14.9123 2.86115C14.9044 2.89854 14.8859 2.93287 14.859 2.96008L13.866 3.95208C13.8272 3.99092 13.7808 4.02136 13.7297 4.04149C13.6786 4.06162 13.6239 4.07101 13.569 4.06908C11.3458 3.99293 9.11993 4.07815 6.90901 4.32408C6.26295 4.39558 5.65986 4.6828 5.19717 5.13933C4.73447 5.59586 4.43919 6.19504 4.35901 6.84008C3.95787 10.2684 3.95787 13.7318 4.35901 17.1601C4.43919 17.8051 4.73447 18.4043 5.19717 18.8608C5.65986 19.3174 6.26295 19.6046 6.90901 19.6761C10.264 20.0511 13.736 20.0511 17.092 19.6761C17.7381 19.6046 18.3412 19.3174 18.8039 18.8608C19.2666 18.4043 19.5608 17.8051 19.641 17.1601Z" fill="#C4C4C4"/>
+                    </svg>                                         
+                  </button>
+                </span>     
+              </div>
+            </div>
+          </div>
+          <div class="form-body">
+            <div class="form-body_input-wrapper">
+              <span class="visibox">
+                <input type="checkbox" name="visible" checked>
+                <label for="visible">表示させる</label>
+              </span>
+              <label for="corp_name">会社名</label>
+              <input type="text" name="corp_name" placeholder="◯◯株式会社△△部">
+            </div>
+            <div class="form-body_input-wrapper">
+              <span class="visibox">
+                <input type="checkbox" name="visible" checked>
+                <label for="visible">表示させる</label>
+              </span>
+              <label for="name">ご氏名</label>
+              <input type="text" name="name" placeholder="サイト 太郎">
+            </div>
+            <div class="form-body_input-wrapper">
+              <span class="visibox">
+                <input type="checkbox" name="visible" checked>
+                <label for="visible">表示させる</label>
+              </span>
+              <label for="email">メールアドレス</label>
+              <input type="email" name="email" placeholder="メールアドレス">
+            </div>
+            <fieldset id="optionFieldset">
+              <span class="visibox">
+                <input type="checkbox" name="visible" checked>
+                <label for="visible">表示させる</label>
+              </span>
+              <p class="subject_label">ご用件</p>
+              <div class="form-body_wrapper">
+                <input type="checkbox" name="3st_elem">
+                <label for="3st_elem">イベント出演の依頼</label>
+                <span class="item_action_btns">
+                  <button>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                      <path fill-rule="evenodd" clip-rule="evenodd" d="M21.4559 5.41632C21.5509 5.56052 21.5932 5.7331 21.5757 5.9049C21.5582 6.07671 21.482 6.23721 21.3599 6.35932L12.1669 15.5513C12.0728 15.6453 11.9555 15.7126 11.8269 15.7463L7.99787 16.7463C7.8713 16.7793 7.7383 16.7787 7.61206 16.7444C7.48583 16.7101 7.37076 16.6434 7.27826 16.5509C7.18577 16.4584 7.11908 16.3434 7.0848 16.2171C7.05053 16.0909 7.04986 15.9579 7.08287 15.8313L8.08287 12.0033C8.11277 11.8887 8.16776 11.7821 8.24387 11.6913L17.4709 2.47032C17.6115 2.32987 17.8021 2.25098 18.0009 2.25098C18.1996 2.25098 18.3902 2.32987 18.5309 2.47032L21.3599 5.29832C21.3948 5.33516 21.4269 5.3746 21.4559 5.41632ZM19.7689 5.82832L18.0009 4.06132L9.48287 12.5793L8.85787 14.9723L11.2509 14.3473L19.7689 5.82832Z" fill="#C4C4C4"/>
+                      <path d="M19.641 17.1601C19.9143 14.824 20.0016 12.47 19.902 10.1201C19.8997 10.0647 19.9089 10.0094 19.929 9.95778C19.9491 9.90614 19.9798 9.85925 20.019 9.82008L21.003 8.83608C21.0299 8.80904 21.064 8.79033 21.1013 8.78222C21.1385 8.77411 21.1774 8.77693 21.2131 8.79034C21.2488 8.80375 21.2798 8.82719 21.3025 8.85783C21.3252 8.88847 21.3386 8.92502 21.341 8.96308C21.5257 11.7543 21.4554 14.5566 21.131 17.3351C20.895 19.3571 19.271 20.9421 17.258 21.1671C13.7633 21.5538 10.2367 21.5538 6.74201 21.1671C4.73001 20.9421 3.10501 19.3571 2.86901 17.3351C2.45512 13.7905 2.45512 10.2097 2.86901 6.66508C3.10501 4.64308 4.72901 3.05808 6.74201 2.83308C9.39446 2.54012 12.0667 2.46888 14.731 2.62008C14.7691 2.62281 14.8057 2.63642 14.8363 2.65929C14.867 2.68215 14.8904 2.71332 14.9039 2.7491C14.9173 2.78487 14.9203 2.82376 14.9123 2.86115C14.9044 2.89854 14.8859 2.93287 14.859 2.96008L13.866 3.95208C13.8272 3.99092 13.7808 4.02136 13.7297 4.04149C13.6786 4.06162 13.6239 4.07101 13.569 4.06908C11.3458 3.99293 9.11993 4.07815 6.90901 4.32408C6.26295 4.39558 5.65986 4.6828 5.19717 5.13933C4.73447 5.59586 4.43919 6.19504 4.35901 6.84008C3.95787 10.2684 3.95787 13.7318 4.35901 17.1601C4.43919 17.8051 4.73447 18.4043 5.19717 18.8608C5.65986 19.3174 6.26295 19.6046 6.90901 19.6761C10.264 20.0511 13.736 20.0511 17.092 19.6761C17.7381 19.6046 18.3412 19.3174 18.8039 18.8608C19.2666 18.4043 19.5608 17.8051 19.641 17.1601Z" fill="#C4C4C4"/>
+                    </svg>                                         
+                  </button>
+                  <button>
+                    <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+                      <path d="M7.05273 12.9454L12.9461 7.05371M7.05273 7.05371L12.9461 12.9454" stroke="#C4C4C4" stroke-linecap="round"/>
+                    </svg>                                                 
+                  </button>
+                </span>
+              </div>
+              <button class="form-body_wrapper_btn" type="button" id="addOptionBtn">+ 選択肢を追加(あと2個)</button>
+            </fieldset>
+            <textarea class="form-body_wrapper_textarea"  name="otherRequest" rows="4" cols="50" placeholder="自由記入欄"></textarea>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="contents">
+      <h2 class="box_label">お問い合わせ一覧</h2>
+      <div class="info_number_wrapper">
+        <p class="info_number">
+          <span class="label">新着</span>
+          <span class="number">3</span>
+          <span>件</span>
+        </p>
+        <p class="info_number">
+          <span class="label">総数</span>
+          <span class="number">24</span>
+          <span>件</span>
+        </p>
+      </div>
+      <div class="option_box">
+        <div class="subject_wrapper">
+          <button class="active">全て</button>
+          <button>イベント出演の依頼</button>
+          <button>webサイト制作の相談</button>
+        </div>
+        <div class="option_wrapper">
+          <div class="option">
+            <input type="radio" checked id="all" name="option">
+            <label for="all">全て</label>
+          </div>
+          <div class="option">
+            <input type="radio" id="flag" name="option">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M2.66602 14.0003V10.4583M2.66602 10.4583C6.54468 7.42498 9.45402 13.4916 13.3327 10.4583V2.87565C9.45402 5.90898 6.54468 -0.157686 2.66602 2.87565V10.4583Z" stroke="#C4C4C4" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>          
+            <label for="flag">のみ</label>
+          </div>
+          <div class="option">
+            <input type="radio" id="unread" name="option">
+            <label for="unread">未読のみ</label>
+          </div>
+        </div>
+      </div>
+      <div class="form_list">
+        <div class="form_item">
+          <div class="form_item_body">
+            <div class="form_item_info">
+              <p class="form_item_info_item">株式会社もっふる</p>
+              <span class="slash"></span>
+              <p class="form_item_info_item">藻降 太郎</p>
+              <span class="slash"></span>
+              <time class="form_item_info_item">藻降 太郎</time>
+            </div>
+            <div class="form_item_wrapper">
+              <p class="form_item_label">用件</p>
+              <p class="form_item_text">
+                イベント出演の依頼
+              </p>
+            </div>
+            <div class="form_item_wrapper">
+              <p class="form_item_label">自由記入</p>
+              <h3 class="form_item_text">
+                初めまして、株式会社もっふるの広報担当の喪降と申します。 Google検索で貴社のWEBコンテンツをご紹介し、相互の認知度向上に寄与したいと考えております。 よくあるリード営業などではない為に、費用や掲載費用などは一切なく、 貴社様のご紹介を弊社メディアでさせて頂いても構いませんでしょうか？ また、Googleでの認知度向上を目的に、弊社サイトと貴社サイトの相互リンクをご提案いたします。 費用や掲載料は一切発生せず、双方の顧客にとって有益な情報提供が可能になります。 ご興味がございましたら、下記メールアドレスまでご返信いただけますと幸いです。
+              </h3>
+            </div>
+            <div class="form_item_wrapper">
+              <p class="form_item_label">メールアドレス</p>
+              <a class="form_item_text">
+                tatsu0823takasago@icloud.com
+              </a>
+            </div>
+          </div>
+          <div class="form_item_btns">
+            <button class="form_item_flag">
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M2.66602 14.0003V10.4583M2.66602 10.4583C6.54468 7.42498 9.45402 13.4916 13.3327 10.4583V2.87565C9.45402 5.90898 6.54468 -0.157686 2.66602 2.87565V10.4583Z" stroke="#C4C4C4" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>                
+            </button>
+            <button class="form_item_btn">
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <g clip-path="url(#clip0_623_115)">
+                <path fill-rule="evenodd" clip-rule="evenodd" d="M10.4712 7.52879C10.5962 7.65381 10.6664 7.82334 10.6664 8.00012C10.6664 8.1769 10.5962 8.34644 10.4712 8.47145L6.6999 12.2428C6.63841 12.3065 6.56484 12.3572 6.48351 12.3922C6.40217 12.4271 6.31469 12.4455 6.22617 12.4463C6.13765 12.4471 6.04986 12.4302 5.96793 12.3967C5.886 12.3631 5.81157 12.3136 5.74897 12.251C5.68638 12.1885 5.63688 12.114 5.60336 12.0321C5.56983 11.9502 5.55297 11.8624 5.55374 11.7739C5.55451 11.6853 5.5729 11.5979 5.60784 11.5165C5.64277 11.4352 5.69356 11.3616 5.75724 11.3001L9.05724 8.00012L5.75724 4.70012C5.6358 4.57439 5.5686 4.40598 5.57012 4.23119C5.57164 4.05639 5.64175 3.88918 5.76536 3.76557C5.88896 3.64197 6.05617 3.57186 6.23097 3.57034C6.40577 3.56882 6.57417 3.63601 6.6999 3.75745L10.4712 7.52879Z" fill="white"/>
+                </g>
+                <defs>
+                <clipPath id="clip0_623_115">
+                <rect width="16" height="16" fill="white"/>
+                </clipPath>
+                </defs>
+              </svg>                
+            </button>
+          </div>
+        </div>
+        <div class="form_item">
+          <div class="form_item_body">
+            <div class="form_item_info">
+              <p class="form_item_info_item">株式会社もっふる</p>
+              <span class="slash"></span>
+              <p class="form_item_info_item">藻降 太郎</p>
+              <span class="slash"></span>
+              <time class="form_item_info_item">藻降 太郎</time>
+            </div>
+            <div class="form_item_wrapper">
+              <h3 class="form_item_text">
+                初めまして、株式会社もっふるの広報担当の喪降と申します。 Google検索で貴社のWEBコンテンツをご紹介し、相互の認知度向上に寄与したいと考えております。 よくあるリード営業などではない為に、費用や掲載費用などは一切なく、 貴社様のご紹介を弊社メディアでさせて頂いても構いませんでしょうか？ また、Googleでの認知度向上を目的に、弊社サイトと貴社サイトの相互リンクをご提案いたします。 費用や掲載料は一切発生せず、双方の顧客にとって有益な情報提供が可能になります。 ご興味がございましたら、下記メールアドレスまでご返信いただけますと幸いです。
+              </h3>
+            </div>
+          </div>
+          <div class="form_item_btns">
+            <button class="form_item_flag">
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M2.66602 14.0003V10.4583M2.66602 10.4583C6.54468 7.42498 9.45402 13.4916 13.3327 10.4583V2.87565C9.45402 5.90898 6.54468 -0.157686 2.66602 2.87565V10.4583Z" stroke="#C4C4C4" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>                
+            </button>
+            <button class="form_item_btn">
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <g clip-path="url(#clip0_623_115)">
+                <path fill-rule="evenodd" clip-rule="evenodd" d="M10.4712 7.52879C10.5962 7.65381 10.6664 7.82334 10.6664 8.00012C10.6664 8.1769 10.5962 8.34644 10.4712 8.47145L6.6999 12.2428C6.63841 12.3065 6.56484 12.3572 6.48351 12.3922C6.40217 12.4271 6.31469 12.4455 6.22617 12.4463C6.13765 12.4471 6.04986 12.4302 5.96793 12.3967C5.886 12.3631 5.81157 12.3136 5.74897 12.251C5.68638 12.1885 5.63688 12.114 5.60336 12.0321C5.56983 11.9502 5.55297 11.8624 5.55374 11.7739C5.55451 11.6853 5.5729 11.5979 5.60784 11.5165C5.64277 11.4352 5.69356 11.3616 5.75724 11.3001L9.05724 8.00012L5.75724 4.70012C5.6358 4.57439 5.5686 4.40598 5.57012 4.23119C5.57164 4.05639 5.64175 3.88918 5.76536 3.76557C5.88896 3.64197 6.05617 3.57186 6.23097 3.57034C6.40577 3.56882 6.57417 3.63601 6.6999 3.75745L10.4712 7.52879Z" fill="white"/>
+                </g>
+                <defs>
+                <clipPath id="clip0_623_115">
+                <rect width="16" height="16" fill="white"/>
+                </clipPath>
+                </defs>
+              </svg>                
+            </button>
+          </div>
+        </div>
+        <div class="form_item read">
+          <div class="form_item_body">
+            <div class="form_item_info">
+              <p class="form_item_info_item">株式会社もっふる</p>
+              <span class="slash"></span>
+              <p class="form_item_info_item">藻降 太郎</p>
+              <span class="slash"></span>
+              <time class="form_item_info_item">藻降 太郎</time>
+            </div>
+            <div class="form_item_wrapper">
+              <h3 class="form_item_text">
+                初めまして、株式会社もっふるの広報担当の喪降と申します。 Google検索で貴社のWEBコンテンツをご紹介し、相互の認知度向上に寄与したいと考えております。 よくあるリード営業などではない為に、費用や掲載費用などは一切なく、 貴社様のご紹介を弊社メディアでさせて頂いても構いませんでしょうか？ また、Googleでの認知度向上を目的に、弊社サイトと貴社サイトの相互リンクをご提案いたします。 費用や掲載料は一切発生せず、双方の顧客にとって有益な情報提供が可能になります。 ご興味がございましたら、下記メールアドレスまでご返信いただけますと幸いです。
+              </h3>
+            </div>
+          </div>
+          <div class="form_item_btns">
+            <button class="form_item_flag">
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M2.66602 14.0003V10.4583M2.66602 10.4583C6.54468 7.42498 9.45402 13.4916 13.3327 10.4583V2.87565C9.45402 5.90898 6.54468 -0.157686 2.66602 2.87565V10.4583Z" stroke="#C4C4C4" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>                
+            </button>
+            <button class="form_item_btn">
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <g clip-path="url(#clip0_623_115)">
+                <path fill-rule="evenodd" clip-rule="evenodd" d="M10.4712 7.52879C10.5962 7.65381 10.6664 7.82334 10.6664 8.00012C10.6664 8.1769 10.5962 8.34644 10.4712 8.47145L6.6999 12.2428C6.63841 12.3065 6.56484 12.3572 6.48351 12.3922C6.40217 12.4271 6.31469 12.4455 6.22617 12.4463C6.13765 12.4471 6.04986 12.4302 5.96793 12.3967C5.886 12.3631 5.81157 12.3136 5.74897 12.251C5.68638 12.1885 5.63688 12.114 5.60336 12.0321C5.56983 11.9502 5.55297 11.8624 5.55374 11.7739C5.55451 11.6853 5.5729 11.5979 5.60784 11.5165C5.64277 11.4352 5.69356 11.3616 5.75724 11.3001L9.05724 8.00012L5.75724 4.70012C5.6358 4.57439 5.5686 4.40598 5.57012 4.23119C5.57164 4.05639 5.64175 3.88918 5.76536 3.76557C5.88896 3.64197 6.05617 3.57186 6.23097 3.57034C6.40577 3.56882 6.57417 3.63601 6.6999 3.75745L10.4712 7.52879Z" fill="white"/>
+                </g>
+                <defs>
+                <clipPath id="clip0_623_115">
+                <rect width="16" height="16" fill="white"/>
+                </clipPath>
+                </defs>
+              </svg>                
+            </button>
+          </div>
+        </div>
+        <div class="form_item">
+          <div class="form_item_body">
+            <div class="form_item_info">
+              <p class="form_item_info_item">株式会社もっふる</p>
+              <span class="slash"></span>
+              <p class="form_item_info_item">藻降 太郎</p>
+              <span class="slash"></span>
+              <time class="form_item_info_item">藻降 太郎</time>
+            </div>
+            <div class="form_item_wrapper">
+              <h3 class="form_item_text">
+                初めまして、株式会社もっふるの広報担当の喪降と申します。 Google検索で貴社のWEBコンテンツをご紹介し、相互の認知度向上に寄与したいと考えております。 よくあるリード営業などではない為に、費用や掲載費用などは一切なく、 貴社様のご紹介を弊社メディアでさせて頂いても構いませんでしょうか？ また、Googleでの認知度向上を目的に、弊社サイトと貴社サイトの相互リンクをご提案いたします。 費用や掲載料は一切発生せず、双方の顧客にとって有益な情報提供が可能になります。 ご興味がございましたら、下記メールアドレスまでご返信いただけますと幸いです。
+              </h3>
+            </div>
+          </div>
+          <div class="form_item_btns">
+            <button class="form_item_flag">
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M2.66602 14.0003V10.4583M2.66602 10.4583C6.54468 7.42498 9.45402 13.4916 13.3327 10.4583V2.87565C9.45402 5.90898 6.54468 -0.157686 2.66602 2.87565V10.4583Z" stroke="#C4C4C4" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>                
+            </button>
+            <button class="form_item_btn">
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <g clip-path="url(#clip0_623_115)">
+                <path fill-rule="evenodd" clip-rule="evenodd" d="M10.4712 7.52879C10.5962 7.65381 10.6664 7.82334 10.6664 8.00012C10.6664 8.1769 10.5962 8.34644 10.4712 8.47145L6.6999 12.2428C6.63841 12.3065 6.56484 12.3572 6.48351 12.3922C6.40217 12.4271 6.31469 12.4455 6.22617 12.4463C6.13765 12.4471 6.04986 12.4302 5.96793 12.3967C5.886 12.3631 5.81157 12.3136 5.74897 12.251C5.68638 12.1885 5.63688 12.114 5.60336 12.0321C5.56983 11.9502 5.55297 11.8624 5.55374 11.7739C5.55451 11.6853 5.5729 11.5979 5.60784 11.5165C5.64277 11.4352 5.69356 11.3616 5.75724 11.3001L9.05724 8.00012L5.75724 4.70012C5.6358 4.57439 5.5686 4.40598 5.57012 4.23119C5.57164 4.05639 5.64175 3.88918 5.76536 3.76557C5.88896 3.64197 6.05617 3.57186 6.23097 3.57034C6.40577 3.56882 6.57417 3.63601 6.6999 3.75745L10.4712 7.52879Z" fill="white"/>
+                </g>
+                <defs>
+                <clipPath id="clip0_623_115">
+                <rect width="16" height="16" fill="white"/>
+                </clipPath>
+                </defs>
+              </svg>                
+            </button>
+          </div>
+        </div>
+      </div>
+    </section>
+  </div>
+</Layout>
+
+<style lang="scss">
+  .pan{
+    margin-top: 8px;
+    
+    &_item{
+      display: flex;
+      gap: 8px;
+      color: var(--sub-font-color);
+      font-size: var(--font-size-xs);
+      font-weight: 300;
+
+      >a{
+        color: var(--main-font-color);
+      }
+    }
+  }
+
+  .nav{
+    position: relative;
+    margin-top: 16px;
+    width: 100%;
+    overflow: hidden;
+    border-radius: var(--border-radius-m);
+    background-color: var(--sub-bg-color);
+    border: 1px solid var(--main-border-color);
+
+    &_btn{
+      position: absolute;
+      right: 0;
+      height: 100%;
+      padding: 0 8px;
+      background-color: var(--sub-bg-color);
+      border-left: 1px solid var(--main-border-color);
+      z-index: 10;
+    }
+
+    &_list{
+      width: 100%;
+      display: flex;
+      flex-wrap: nowrap;
+      gap: 8px;
+      align-items: center;
+      padding-inline: 24px;
+      overflow-x: auto;
+    }
+
+    &_item{
+      >.active{
+        color: var(--main-font-color);
+        border-bottom: 1px solid var(--accent-bg-color);
+      }
+    }
+
+    &_link{
+      position: relative;
+      padding: 16px 40px;
+      text-wrap: nowrap;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--sub-font-color);
+      font-size: var(--font-size-xs);
+      font-weight: 400;
+      transition: all .2s;
+
+      &:hover{
+        color: var(--main-font-color);
+        transition: all .2s;
+
+        &::after{
+          content: "";
+          position: absolute;
+          bottom: 0;
+          height: 1px;
+          background-color: var(--accent-bg-color);
+          animation: nav_border .2s forwards;
+
+          @keyframes nav_border {
+            0%{
+              width: 0;
+            }
+            100%{
+              width: 100%;
+            }
+          }
+        }
+      }
+    }
+  }
+
+  .box{
+		width: calc(100% - 32px);
+    margin-inline: 16px;
+    // width: 100%;
+    // max-width: 800px;
+		background-color: var(--sub-bg-color);
+		border: 1px solid var(--main-border-color);
+		border-radius: var(--border-radius-m);
+		margin-top: 8px;
+
+		&:first-of-type{
+			margin-top: 16px;
+		}
+
+		>.inner{
+			padding: 16px;
+		}
+
+    &_header{
+      margin-top: 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    &_desc{
+      font-size: var(--font-size-xs);
+      font-weight: 400;
+      color: var(--sub-font-color);
+    }
+
+    &_label{
+      font-size: var(--font-size-s);
+      color: var(--main-font-color);
+    }
+
+    &_btn{
+      padding: 12px 16px;
+      border-radius: var(--border-radius-m);
+      font-size: var(--font-size-xxs);
+      color: var(--main-font-color);
+      border: 1px solid var(--sub-border-color);
+
+      &_wrapper{
+        display: flex;
+        align-items: center;
+        gap: 8px;
+
+        >.save{
+          color: var(--main-font-color);
+          background-color: var(--accent-bg-color);
+          border: 1px solid var(--accent-bg-color);
+        }
+      }
+    }
+  }
+
+  .contents{
+    width: calc(100% - 32px);
+    margin-top: 40px;
+    margin-inline: 16px;
+    padding-top: 40px;
+    border-top: 1px solid var(--main-border-color);
+  }
+
+</style>
+
+<script>
+   // --- 要素取得 ---
+   const addOptionBtn = document.getElementById('addOptionBtn');
+  const optionFieldset = document.getElementById('optionFieldset');
+
+  // --- ① フィールドセット内のクリックをまとめて扱う ---
+  optionFieldset.addEventListener('click', (ev) => {
+    // 削除ボタン？
+    const delBtn = ev.target.closest('.delete-option-btn');
+    if (delBtn) {
+      // 削除確認
+      if (!confirm("この要件を削除してよろしいですか？")) return;
+
+      // 親 .form-body_wrapper を削除
+      const wrapper = delBtn.closest('.form-body_wrapper');
+      if (wrapper) {
+        wrapper.remove();
+      }
+      return;
+    }
+
+    // 編集ボタン？
+    const editBtn = ev.target.closest('.edit-option-btn');
+    if (editBtn) {
+      // 同じブロック内の <label> を取得
+      const wrapper = editBtn.closest('.form-body_wrapper');
+      if (!wrapper) return;
+      const labelEl = wrapper.querySelector('label');
+      if (!labelEl) return;
+
+      // contenteditable をオンにして、フォーカス＆全選択
+      labelEl.setAttribute('contenteditable', 'true');
+      labelEl.focus();
+
+      // 全選択 (モダンブラウザの場合)
+      if (window.getSelection && document.createRange) {
+        const range = document.createRange();
+        range.selectNodeContents(labelEl);
+        const sel = window.getSelection();
+        sel.removeAllRanges();
+        sel.addRange(range);
+      } else {
+        // 古いブラウザ向け (execCommand)
+        document.execCommand('selectAll', false, null);
+      }
+
+      // blur したら編集終了（必要に応じて外さなくてもOK）
+      labelEl.addEventListener('blur', () => {
+        labelEl.removeAttribute('contenteditable');
+      }, { once: true });
+
+      return;
+    }
+
+    // それ以外のクリックは何もしない
+  });
+
+  // --- ② 「+ 選択肢を追加」ボタン ---
+  addOptionBtn.addEventListener('click', () => {
+    // ユニークID
+    const uniqueId = 'contact-option-' + Math.random().toString(36).slice(2);
+
+    // 新しい要素を生成
+    const newWrapper = document.createElement('div');
+    newWrapper.className = 'form-body_wrapper';
+    newWrapper.innerHTML = `
+      <input type="checkbox" id="${uniqueId}" name="options">
+      <label for="${uniqueId}">新しい要件</label>
+      <span class="item_action_btns">
+        <button class="edit-option-btn" data-id="${uniqueId}">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+             <path fill-rule="evenodd" clip-rule="evenodd" d="M21.4559 5.41632C21.5509 5.56052 21.5932 5.7331 21.5757 5.9049C21.5582 6.07671 21.482 6.23721 21.3599 6.35932L12.1669 15.5513C12.0728 15.6453 11.9555 15.7126 11.8269 15.7463L7.99787 16.7463C7.8713 16.7793 7.7383 16.7787 7.61206 16.7444C7.48583 16.7101 7.37076 16.6434 7.27826 16.5509C7.18577 16.4584 7.11908 16.3434 7.0848 16.2171C7.05053 16.0909 7.04986 15.9579 7.08287 15.8313L8.08287 12.0033C8.11277 11.8887 8.16776 11.7821 8.24387 11.6913L17.4709 2.47032C17.6115 2.32987 17.8021 2.25098 18.0009 2.25098C18.1996 2.25098 18.3902 2.32987 18.5309 2.47032L21.3599 5.29832C21.3948 5.33516 21.4269 5.3746 21.4559 5.41632ZM19.7689 5.82832L18.0009 4.06132L9.48287 12.5793L8.85787 14.9723L11.2509 14.3473L19.7689 5.82832Z" fill="#C4C4C4"/>
+             <path d="M19.641 17.1601C19.9143 14.824 20.0016 12.47 19.902 10.1201C19.8997 10.0647 19.9089 10.0094 19.929 9.95778C19.9491 9.90614 19.9798 9.85925 20.019 9.82008L21.003 8.83608C21.0299 8.80904 21.064 8.79033 21.1013 8.78222C21.1385 8.77411 21.1774 8.77693 21.2131 8.79034C21.2488 8.80375 21.2798 8.82719 21.3025 8.85783C21.3252 8.88847 21.3386 8.92502 21.341 8.96308C21.5257 11.7543 21.4554 14.5566 21.131 17.3351C20.895 19.3571 19.271 20.9421 17.258 21.1671C13.7633 21.5538 10.2367 21.5538 6.74201 21.1671C4.73001 20.9421 3.10501 19.3571 2.86901 17.3351C2.45512 13.7905 2.45512 10.2097 2.86901 6.66508C3.10501 4.64308 4.72901 3.05808 6.74201 2.83308C9.39446 2.54012 12.0667 2.46888 14.731 2.62008C14.7691 2.62281 14.8057 2.63642 14.8363 2.65929C14.867 2.68215 14.8904 2.71332 14.9039 2.7491C14.9173 2.78487 14.9203 2.82376 14.9123 2.86115C14.9044 2.89854 14.8859 2.93287 14.859 2.96008L13.866 3.95208C13.8272 3.99092 13.7808 4.02136 13.7297 4.04149C13.6786 4.06162 13.6239 4.07101 13.569 4.06908C11.3458 3.99293 9.11993 4.07815 6.90901 4.32408C6.26295 4.39558 5.65986 4.6828 5.19717 5.13933C4.73447 5.59586 4.43919 6.19504 4.35901 6.84008C3.95787 10.2684 3.95787 13.7318 4.35901 17.1601C4.43919 17.8051 4.73447 18.4043 5.19717 18.8608C5.65986 19.3174 6.26295 19.6046 6.90901 19.6761C10.264 20.0511 13.736 20.0511 17.092 19.6761C17.7381 19.6046 18.3412 19.3174 18.8039 18.8608C19.2666 18.4043 19.5608 17.8051 19.641 17.1601Z" fill="#C4C4C4"/>
+          </svg>
+        </button>
+        <button class="delete-option-btn" data-id="${uniqueId}">
+          <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+           <path d="M7.05273 12.9454L12.9461 7.05371M7.05273 7.05371L12.9461 12.9454" stroke="#C4C4C4" stroke-linecap="round"/>
+          </svg>
+        </button>
+      </span>
+    `;
+
+    // 追加ボタンの直前に挿入
+    optionFieldset.insertBefore(newWrapper, addOptionBtn);
+  });
+
+  // // 「+ 選択肢を追加」ボタン
+  // const addOptionBtn = document.getElementById('addOptionBtn');
+  // // 親の <fieldset>（「ご用件」全体）を取得
+  // const optionFieldset = addOptionBtn.closest('fieldset');
+
+  // // ボタンをクリックしたら新しい選択肢を追加
+  // addOptionBtn.addEventListener('click', () => {
+  //   // 1) ユニークID（衝突回避用）を作る
+  //   const uniqueId = 'contact-option-' + Math.random().toString(36).slice(2);
+
+  //   // 2) 新しい要素を生成
+  //   const newWrapper = document.createElement('div');
+  //   newWrapper.className = 'form-body_wrapper';
+  //   // 中身は「チェックボックス + ラベル + 右端ボタン」など。お好みで
+  //   newWrapper.innerHTML = `
+  //     <input type="checkbox" id="${uniqueId}" name="options">
+  //     <label for="${uniqueId}" contenteditable="true">新しい要件</label>
+  //     <span class="item_action_btns">
+  //        <button class="edit-option-btn" data-id="${uniqueId}">
+  //         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+  //           <path fill-rule="evenodd" clip-rule="evenodd" d="M21.4559 5.41632C21.5509 5.56052 21.5932 5.7331 21.5757 5.9049C21.5582 6.07671 21.482 6.23721 21.3599 6.35932L12.1669 15.5513C12.0728 15.6453 11.9555 15.7126 11.8269 15.7463L7.99787 16.7463C7.8713 16.7793 7.7383 16.7787 7.61206 16.7444C7.48583 16.7101 7.37076 16.6434 7.27826 16.5509C7.18577 16.4584 7.11908 16.3434 7.0848 16.2171C7.05053 16.0909 7.04986 15.9579 7.08287 15.8313L8.08287 12.0033C8.11277 11.8887 8.16776 11.7821 8.24387 11.6913L17.4709 2.47032C17.6115 2.32987 17.8021 2.25098 18.0009 2.25098C18.1996 2.25098 18.3902 2.32987 18.5309 2.47032L21.3599 5.29832C21.3948 5.33516 21.4269 5.3746 21.4559 5.41632ZM19.7689 5.82832L18.0009 4.06132L9.48287 12.5793L8.85787 14.9723L11.2509 14.3473L19.7689 5.82832Z" fill="#C4C4C4"/>
+  //           <path d="M19.641 17.1601C19.9143 14.824 20.0016 12.47 19.902 10.1201C19.8997 10.0647 19.9089 10.0094 19.929 9.95778C19.9491 9.90614 19.9798 9.85925 20.019 9.82008L21.003 8.83608C21.0299 8.80904 21.064 8.79033 21.1013 8.78222C21.1385 8.77411 21.1774 8.77693 21.2131 8.79034C21.2488 8.80375 21.2798 8.82719 21.3025 8.85783C21.3252 8.88847 21.3386 8.92502 21.341 8.96308C21.5257 11.7543 21.4554 14.5566 21.131 17.3351C20.895 19.3571 19.271 20.9421 17.258 21.1671C13.7633 21.5538 10.2367 21.5538 6.74201 21.1671C4.73001 20.9421 3.10501 19.3571 2.86901 17.3351C2.45512 13.7905 2.45512 10.2097 2.86901 6.66508C3.10501 4.64308 4.72901 3.05808 6.74201 2.83308C9.39446 2.54012 12.0667 2.46888 14.731 2.62008C14.7691 2.62281 14.8057 2.63642 14.8363 2.65929C14.867 2.68215 14.8904 2.71332 14.9039 2.7491C14.9173 2.78487 14.9203 2.82376 14.9123 2.86115C14.9044 2.89854 14.8859 2.93287 14.859 2.96008L13.866 3.95208C13.8272 3.99092 13.7808 4.02136 13.7297 4.04149C13.6786 4.06162 13.6239 4.07101 13.569 4.06908C11.3458 3.99293 9.11993 4.07815 6.90901 4.32408C6.26295 4.39558 5.65986 4.6828 5.19717 5.13933C4.73447 5.59586 4.43919 6.19504 4.35901 6.84008C3.95787 10.2684 3.95787 13.7318 4.35901 17.1601C4.43919 17.8051 4.73447 18.4043 5.19717 18.8608C5.65986 19.3174 6.26295 19.6046 6.90901 19.6761C10.264 20.0511 13.736 20.0511 17.092 19.6761C17.7381 19.6046 18.3412 19.3174 18.8039 18.8608C19.2666 18.4043 19.5608 17.8051 19.641 17.1601Z" fill="#C4C4C4"/>
+  //         </svg>
+  //       </button>
+  //       <button class="delete-option-btn" data-id="${uniqueId}">
+  //         <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+  //         <path d="M7.05273 12.9454L12.9461 7.05371M7.05273 7.05371L12.9461 12.9454" stroke="#C4C4C4" stroke-linecap="round"/>
+  //       </svg>
+  //       </button>
+  //     </span>
+  //   `;
+
+  //   // 3) 追加ボタンの直前に挿入
+  //   optionFieldset.insertBefore(newWrapper, addOptionBtn);
+
+  //   // (1) fieldset 要素にイベントを仕込む
+  //   optionFieldset.addEventListener('click', (ev) => {
+  //     // クリックされた要素が「.delete-option-btn」かどうか判定
+  //     const delBtn = ev.target.closest('.delete-option-btn');
+  //     if (!delBtn) return; // それ以外なら何もしない
+
+  //     // 確認ダイアログ: キャンセルなら処理を抜ける
+  //     if (!confirm("この要件を削除してよろしいですか？")) {
+  //       return;
+  //     }
+
+  //     // (2) 親の .form-body_wrapper を削除する
+  //     const wrapper = delBtn.closest('.form-body_wrapper');
+  //     if (wrapper) {
+  //       wrapper.remove();
+  //     }
+
+  //     // ② 編集ボタンなら編集モードに切り替え
+  //     const editBtn = ev.target.closest('.edit-option-btn');
+  //     if (editBtn) {
+  //       // 同じブロック内の <label> を取得
+  //       const wrapper = editBtn.closest('.form-body_wrapper');
+  //       if (!wrapper) return;
+  //       const labelEl = wrapper.querySelector('label');
+  //       if (!labelEl) return;
+
+  //       // contenteditable をオンにして、フォーカス＆全選択
+  //       labelEl.setAttribute('contenteditable', 'true');
+  //       labelEl.focus();
+
+  //       // 全選択 (Modernブラウザの場合)
+  //       if (window.getSelection && document.createRange) {
+  //         const range = document.createRange();
+  //         range.selectNodeContents(labelEl);
+  //         const sel = window.getSelection();
+  //         sel.removeAllRanges();
+  //         sel.addRange(range);
+  //       } else {
+  //         // 古いブラウザ向け (execCommand)
+  //         document.execCommand('selectAll', false, null);
+  //       }
+
+  //       // ※ 編集が終わったら blur 時に contenteditable を外す or そのままにする…などお好みで
+  //       labelEl.addEventListener('blur', () => {
+  //         // 例: blur したら編集モード終了にする
+  //         labelEl.removeAttribute('contenteditable');
+  //         // さらに必要であれば テキストの取得や保存処理など
+  //       }, { once: true });
+
+  //       return; // ここで処理終了
+  //     }
+  //   });
+
+
+  //   // 4) 追加直後にラベルを編集したい場合はフォーカスを当てる（任意）
+  //   const labelEl = newWrapper.querySelector('label[contenteditable]');
+  //   if (labelEl) {
+  //     labelEl.focus();
+  //     document.execCommand('selectAll', false, null);
+  //   }
+  // });
+</script>
+
