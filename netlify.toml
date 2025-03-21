@@ -3,10 +3,24 @@
   publish = "dist"
   functions = "netlify/functions"
 
+# メインSSR関数へのリダイレクト
 [[redirects]]
   from = "/*"
   to = "/.netlify/functions/entry"
   status = 200
+
+# API関数へのパス
+[[redirects]]
+  from = "/api/*"
+  to = "/.netlify/functions/:splat"
+  status = 200
+
+# SPAフォールバック（クライアントサイドルーティング用）
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
+  force = false
 
 [dev]
   command = "npm run dev"

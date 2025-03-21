@@ -4,7 +4,7 @@ export const prerender = false;
 import Layout from "../layouts/Layout.astro";
 import { getFirebaseAdmin } from "../lib/firebase-admin";
 
-// デバッグ情報（本番環境では削除）
+// デバッグ情報
 console.log("環境変数チェック:", {
   apiKey: import.meta.env.PUBLIC_FIREBASE_API_KEY?.substring(0, 5) + "...",
   projectId: import.meta.env.PUBLIC_FIREBASE_PROJECT_ID,
@@ -20,10 +20,15 @@ try {
   db = firestore;
 } catch (error) {
   console.error("Firebase Admin initialization failed:", error);
-  // エラーページを表示するか、最低限の機能で続行
 }
 
-// Cookie から token を取得 - エラーハンドリング強化
+// 認証チェックを一時的にスキップ（デバッグ用）
+let authUser = { uid: "test-user", email: "test@example.com" };
+let userData = null;
+
+// 通常の認証コードをコメントアウト
+/*
+// Cookie から token を取得
 let token = "";
 try {
   const cookieHeader = Astro.request.headers.get("cookie") || "";
@@ -36,281 +41,52 @@ try {
   token = cookies["token"] || "";
 } catch (error) {
   console.error("Cookie parsing failed:", error);
-  // エラー処理
 }
 
-// エラー表示/フォーム切替用
-let postError = "";
-let defaultFormMode = "login"; // 文字列として正しく設定
-
-// POSTメソッド時の処理
+// 認証チェック
 let authUser = null;
-const method = Astro.request.method.toUpperCase();
-if (method === "POST") {
+let userData = null;
+
+if (token && adminAuth) {
   try {
-    const formData = await Astro.request.formData();
-    const action = formData.get("action")?.toString() || "";
-
-    // ログアウト処理
-    if (action === "logout") {
-      return new Response(null, {
-        status: 303,
-        headers: {
-          "Set-Cookie": `token=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT`,
-          Location: "/",
-        },
-      });
-    }
-
-    // ログイン処理
-    if (action === "login") {
-      const email = formData.get("email")?.toString() || "";
-      const password = formData.get("password")?.toString() || "";
-      const apiKey = import.meta.env.PUBLIC_FIREBASE_API_KEY;
-
-      // Firebase Auth REST APIを使ってログイン
-      const res = await fetch(
-        `https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${apiKey}`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            email,
-            password,
-            returnSecureToken: true,
-          }),
-        }
-      );
-      const data = await res.json();
-      if (data.error) {
-        console.error("[Login Error]", data.error);
-        postError = "ログインに失敗しました";
-      } else {
-        // 成功 → Cookie設定 → /[userId] にリダイレクト
-        const userId = data.localId; // FirebaseのUID
-        return new Response(null, {
-          status: 303,
-          headers: {
-            "Set-Cookie": `token=${data.idToken}; Path=/; HttpOnly`,
-            Location: `/${userId}`,
-          },
-        });
-      }
-    }
+    const decodedToken = await adminAuth.verifyIdToken(token);
+    authUser = decodedToken;
     
-    // 新規登録処理
-    else if (action === "register") {
-      const email = formData.get("email")?.toString() || "";
-      const password = formData.get("password")?.toString() || "";
-      const confirmPassword = formData.get("confirmPassword")?.toString() || "";
-      const displayName = formData.get("displayName")?.toString() || "";
-
-      if (password !== confirmPassword) {
-        postError = "パスワードが一致しません";
-        defaultFormMode = "register";
-      } else {
-        try {
-          // 1. Admin SDKでユーザー作成
-          const userRecord = await adminAuth.createUser({
-            email,
-            password,
-            displayName,
-          });
-          // 2. Firestoreに初期データを書き込む
-          await db.collection("users").doc(userRecord.uid).set({
-            displayName,
-            email,
-            plan: "free",
-            projects: [],
-          });
-
-          // 3. 作成したユーザーで即ログインするため、Firebase Auth REST APIを再度呼び出し
-          const apiKey = import.meta.env.PUBLIC_FIREBASE_API_KEY;
-          const signInRes = await fetch(
-            `https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${apiKey}`,
-            {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                email,
-                password,
-                returnSecureToken: true,
-              }),
-            }
-          );
-          const signInData = await signInRes.json();
-          if (signInData.error) {
-            // もしログイン失敗ならエラー表示して終わる
-            console.error("[Register->Login Error]", signInData.error);
-            postError = "登録後の自動ログインに失敗しました";
-          } else {
-            // 4. 成功 → Cookie設定 → /[userId] にリダイレクト
-            const userId = signInData.localId;
-            return new Response(null, {
-              status: 303,
-              headers: {
-                "Set-Cookie": `token=${signInData.idToken}; Path=/; HttpOnly`,
-                Location: `/${userId}`,
-              },
-            });
-          }
-        } catch (err) {
-          console.error("[Register Error]", err);
-          postError = "登録に失敗しました";
-        }
+    // ユーザーデータ取得
+    if (db) {
+      const userDoc = await db.collection("users").doc(decodedToken.uid).get();
+      if (userDoc.exists) {
+        userData = userDoc.data();
       }
     }
   } catch (error) {
-    console.error("POST request handling failed:", error);
-    postError = "リクエスト処理中にエラーが発生しました";
+    console.error("Token verification failed:", error);
   }
 }
 
-// ユーザー認証状態の確認 - エラーハンドリング強化
-try {
-  if (token && adminAuth) {
-    const decodedToken = await adminAuth.verifyIdToken(token);
-    authUser = {
-      uid: decodedToken.uid,
-      email: decodedToken.email,
-    };
-  }
-} catch (error) {
-  console.error("Token verification failed:", error);
-  // 無効なトークンの場合はクッキーをクリア
-  return new Response(null, {
-    status: 303,
-    headers: {
-      "Set-Cookie": `token=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT`,
-      Location: "/",
-    },
-  });
+// 未認証ユーザーをログインページにリダイレクト
+if (!authUser) {
+  return Astro.redirect("/login");
 }
+*/
 
-// ★ userId は「authUser がいればその UID」、無ければ "" とする
-const userId = authUser?.uid || "";
-
-// Layout.astro に渡す accountName は、単純に「ログイン or ログアウト」などラベル代わり
-const accountName = authUser ? "ログアウト" : "ログイン";
+// レイアウトにダミープロジェクトを渡す（デバッグ用）
+const projects = [
+  { id: "test-project", name: "テストプロジェクト" }
+];
 ---
 
-<Layout title="App Title" userId={userId} accountName={accountName}>
-  {postError && <p style="color:red;">{postError}</p>}
-
-  {/* ログインしていない場合 → ログイン/新規登録フォーム */}
-  {!authUser && (
-    <>
-      <div id="auth_box_login" class={`auth_box ${defaultFormMode === "register" ? "dis-none" : ""}`}>
-        <h2 class="auth_box_title">ログイン</h2>
-        <form class="form" method="POST">
-          <input type="hidden" name="action" value="login" />
-          <div class="form_wrapper">
-            <label class="form_label" for="email">メールアドレス</label>
-            <input
-              class="form_input"
-              placeholder="メールアドレス"
-              type="email"
-              name="email"
-              required
-            />
-          </div>
-          <div class="form_wrapper">
-            <label class="form_label" for="password">パスワード</label>
-            <input
-              class="form_input"
-              placeholder="半角英数字8文字以上"
-              type="password"
-              name="password"
-              required
-            />
-          </div>
-          <div class="form_btn-wrapper">
-            <button class="form_btn" type="submit">ログイン</button>
-            <button
-              class="auth_box_change"
-              id="auth_box_change_to_register"
-              type="button"
-            >
-              <span>新規登録</span>
-              <span class="auth_box_change_right">
-                アカウントをお持ちでない方
-              </span>
-            </button>
-          </div>
-        </form>
-      </div>
-
-      <div id="auth_box_register" class={`auth_box ${defaultFormMode === "login" ? "dis-none" : ""}`}>
-        <h2 class="auth_box_title">新規登録</h2>
-        <form class="form" method="POST">
-          <input type="hidden" name="action" value="register" />
-          <div class="form_wrapper">
-            <label class="form_label" for="displayName">アカウント名</label>
-            <input
-              class="form_input"
-              placeholder="もち"
-              type="text"
-              name="displayName"
-              required
-            />
-          </div>
-          <div class="form_wrapper">
-            <label class="form_label" for="email">メールアドレス</label>
-            <input
-              class="form_input"
-              placeholder="メールアドレス"
-              type="email"
-              name="email"
-              required
-            />
-          </div>
-          <div class="form_wrapper">
-            <label class="form_label" for="password">パスワード</label>
-            <input
-              class="form_input"
-              placeholder="半角英数字8文字以上"
-              type="password"
-              name="password"
-              required
-            />
-          </div>
-          <div class="form_wrapper">
-            <label class="form_label" for="confirmPassword">
-              パスワード(確認用)
-            </label>
-            <input
-              class="form_input"
-              placeholder="半角英数字8文字以上"
-              type="password"
-              name="confirmPassword"
-              required
-            />
-          </div>
-          <div class="form_btn-wrapper">
-            <button class="form_btn" type="submit">新規登録</button>
-            <button
-              class="auth_box_change"
-              id="auth_box_change_to_login"
-              type="button"
-            >
-              <span>ログイン</span>
-              <span class="auth_box_change_right">
-                アカウントをお持ちの方
-              </span>
-            </button>
-          </div>
-        </form>
-      </div>
-    </>
-  )}
-
-  {/* ログイン中の場合 → ログアウトボタンのみ */}
-  {authUser && (
-    <form method="POST">
-      <input type="hidden" name="action" value="logout" />
-      <button type="submit">ログアウト</button>
-    </form>
-  )}
+<Layout 
+  title="インディビホーム" 
+  accountName={authUser?.email || "ゲスト"} 
+  projects={projects}
+  userId={authUser?.uid}
+>
+  <div>
+    <!-- ページ内容 -->
+    <h1>テスト表示</h1>
+    <p>このページが表示されれば設定は正常です</p>
+  </div>
 </Layout>
 
 <style lang="scss">
