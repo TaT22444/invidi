@@ -6,5 +6,9 @@ import node from '@astrojs/node';
 
 export default defineConfig({
   integrations: [react()],
-  output: 'static',
+  output: 'server',
+  outDir: './dist', // 出力ディレクトリを明示的に指定
+  adapter: netlify({
+    mode: 'directory'
+  }),
 });
