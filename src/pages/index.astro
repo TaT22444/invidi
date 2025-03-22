@@ -4,13 +4,6 @@ export const prerender = false;
 import Layout from "../layouts/Layout.astro";
 import { getFirebaseAdmin } from "../lib/firebase-admin";
 
-// デバッグ情報（本番環境では削除）
-console.log("環境変数チェック:", {
-  apiKey: import.meta.env.PUBLIC_FIREBASE_API_KEY?.substring(0, 5) + "...",
-  projectId: import.meta.env.PUBLIC_FIREBASE_PROJECT_ID,
-  hasPrivateKey: !!import.meta.env.FIREBASE_PRIVATE_KEY,
-});
-
 // Firebase Admin SDK 初期化 - エラーハンドリング強化
 let adminAuth;
 let db;
