@@ -6,5 +6,6 @@ import node from '@astrojs/node';
 
 export default defineConfig({
   integrations: [react()],
-  output: 'static',  // 'server'から'static'に変更
+  output: 'server',
+  adapter: netlify()
 });
