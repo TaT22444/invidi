@@ -11,17 +11,23 @@ const { existingNewsTags, noticeList } = Astro.props;
 <div class="cms_box cms-panel" id="notice-panel" style="display: block;">
   <section class="box">
     <div class="inner">
-      <!-- <div class="cms"> -->
-      <form class="cms" method="POST" enctype="multipart/form-data">
+      <form class="cms" method="POST" enctype="multipart/form-data" id="notice-form">
         <input type="hidden" name="action" value="create_notice" />
         <div class="cms-header">
           <p class="cms-header_title">お知らせ</p>
           <div class="box_btn_wrapper">
-            <button type="submit" class="box_btn">下書き保存</button>
-            <button type="submit" id="save-btn"  class="box_btn save">投稿</button>
+            <button 
+              type="submit" 
+              name="submitType" 
+              value="draft" 
+              class="box_btn">下書き保存</button>
+            <button 
+              type="submit" 
+              name="submitType" 
+              value="publish" 
+              class="box_btn save">投稿</button>
           </div>
         </div>
-        <!-- <form class="cms-body" method="POST"> -->
         <div class="cms-body">
           <div class="cms-body_input-wrapper">
             <label for="news-title">タイトル</label>
@@ -51,9 +57,7 @@ const { existingNewsTags, noticeList } = Astro.props;
               <p>タグを追加(2/5)</p>
             </button>
           </fieldset>
-        <!-- </form> -->
         </div>
-      <!-- </div> -->
       </form>
     </div>
   </section>
@@ -636,3 +640,40 @@ const { existingNewsTags, noticeList } = Astro.props;
     }
   }
 </style>
+
+<script>
+  // フォーム送信前の検証を行うスクリプト
+  document.addEventListener('DOMContentLoaded', () => {
+    const noticeForm = document.getElementById('notice-form');
+    
+    if (noticeForm) {
+      noticeForm.addEventListener('submit', function(e) {
+        // タイトルと本文の入力チェック
+        const titleInput = document.getElementById('news-title');
+        const bodyInput = document.getElementById('news-text');
+        
+        if (titleInput && !titleInput.value.trim()) {
+          e.preventDefault();
+          alert('タイトルを入力してください');
+          titleInput.focus();
+          return false;
+        }
+        
+        if (bodyInput && !bodyInput.value.trim()) {
+          e.preventDefault();
+          alert('本文を入力してください');
+          bodyInput.focus();
+          return false;
+        }
+        
+        // フォーム送信前にログ出力
+        const submitButton = e.submitter;
+        const submitType = submitButton ? submitButton.value : 'draft';
+        console.log('お知らせフォーム送信: submitType =', submitType);
+        
+        // 正常に送信
+        return true;
+      });
+    }
+  });
+</script>
