@@ -395,6 +395,50 @@ if (method === "POST") {
         headers: { Location: `/projects/${projectId}` },
       });
     }
+    
+    // ブログ投稿のステータス変更処理
+    if (action === 'update_blog_status') {
+      const blogId = formData.get('blogId')?.toString();
+      const status = formData.get('status')?.toString();
+      
+      if (blogId && status && projectId) {
+        try {
+          // Firestoreでブログ投稿のステータスを更新
+          await db.collection('projects').doc(projectId).collection('blog').doc(blogId).update({
+            status: status,
+            updatedAt: admin.firestore.FieldValue.serverTimestamp()
+          });
+          
+          console.log(`ブログID: ${blogId} のステータスを ${status} に更新しました`);
+        } catch (error) {
+          console.error('ブログステータス更新エラー:', error);
+        }
+      }
+      
+      return Astro.redirect(`/projects/${projectId}/cms#blog-panel`);
+    }
+    
+    // お知らせのステータス変更処理
+    if (action === 'update_notice_status') {
+      const noticeId = formData.get('noticeId')?.toString();
+      const status = formData.get('status')?.toString();
+      
+      if (noticeId && status && projectId) {
+        try {
+          // Firestoreでお知らせのステータスを更新
+          await db.collection('projects').doc(projectId).collection('notice').doc(noticeId).update({
+            status: status,
+            updatedAt: admin.firestore.FieldValue.serverTimestamp()
+          });
+          
+          console.log(`お知らせID: ${noticeId} のステータスを ${status} に更新しました`);
+        } catch (error) {
+          console.error('お知らせステータス更新エラー:', error);
+        }
+      }
+      
+      return Astro.redirect(`/projects/${projectId}/cms#notice-panel`);
+    }
   } catch (err) {
     console.error("投稿時エラー:", err);
     postError = "投稿に失敗しました。";
@@ -771,6 +815,8 @@ if (method === "POST") {
       border: 1px solid var(--sub-border-color);
 
       &_wrapper{
+        position: sticky;
+        top: 0;
         display: flex;
         align-items: center;
         gap: 8px;

@@ -21,10 +21,10 @@ export async function POST({ request }: { request: Request }) {
   try {
     // JSON 本文を読み取る
     const body = await request.json();
-    const { name, description, projectId, allTags } = body;
+    const { name, description, projectId, allTags, bannerUrl, profileImageUrl } = body;
 
     // projectIdが提供されている場合は直接プロジェクトドキュメントを更新
-    if (projectId && allTags) {
+    if (projectId) {
       // プロジェクトドキュメントの参照を取得
       const projectRef = db.collection("projects").doc(projectId);
       const projectSnap = await projectRef.get();
@@ -35,12 +35,22 @@ export async function POST({ request }: { request: Request }) {
         });
       }
 
-      // allTagsフィールドのみを更新
-      await projectRef.update({ allTags });
+      // 更新するフィールドを準備
+      const updateData = {};
+      
+      // 各フィールドが存在する場合のみ更新対象に追加
+      if (name) updateData.name = name;
+      if (description) updateData.description = description;
+      if (allTags) updateData.allTags = allTags;
+      if (bannerUrl) updateData.bannerUrl = bannerUrl;
+      if (profileImageUrl) updateData.profileImageUrl = profileImageUrl;
+      
+      // 更新を実行
+      await projectRef.update(updateData);
 
       return new Response(JSON.stringify({ 
-        message: "プロジェクトタグの更新に成功しました！",
-        updatedTags: allTags 
+        success: true,
+        message: "プロジェクトの更新に成功しました！"
       }), {
         status: 200,
         headers: { "Content-Type": "application/json" },
@@ -90,7 +100,10 @@ export async function POST({ request }: { request: Request }) {
     });
   } catch (error) {
     console.error("updateProjectエンドポイントでエラー:", error);
-    return new Response(JSON.stringify({ error: "更新に失敗しました。" }), {
+    return new Response(JSON.stringify({ 
+      success: false,
+      error: "更新に失敗しました。" 
+    }), {
       status: 500,
       headers: { "Content-Type": "application/json" },
     });

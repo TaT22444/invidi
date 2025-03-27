@@ -9,6 +9,9 @@
     display: flex;
     justify-content: space-between;
     gap: 16px;
+    position: sticky;
+    top: 8px;
+    z-index: 10;
 
     &_left{
       flex: 1;
@@ -278,10 +281,8 @@
   margin-top: 24px;
 
   &_wrapper{
+    width: 100%;
     position: relative;
-    display: flex;
-    align-items: center;
-    gap: 8px;
     margin-top: 24px;
   }
 

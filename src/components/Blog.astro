@@ -135,7 +135,7 @@ const { existingBlogTags, blogList } = Astro.props;
     <h2 class="posted_label">ブログ一覧</h2>
     <div class="option_box">
       <div class="subject_wrapper" id="blog-status-wrapper">
-        <button class="active">公開</button>
+        <button class="active">公開中</button>
         <button>下書き</button>
       </div>
       <div class="option_wrapper" id="blog-option-wrapper">
@@ -171,6 +171,12 @@ const { existingBlogTags, blogList } = Astro.props;
               </p>
               <h4>{post.title || "(無題)"}</h4>
               <div class="posted_blog-item_btns">
+                <button class="swich" id={`draft-btn-${post.id}`}>
+                  <p>下書きに移動</p>
+                </button>
+                <button class="swich" id={`publish-btn-${post.id}`}>
+                  <p>公開する</p>
+                </button>
                 <button class="posted_blog-item_btn delete" data-blog-id={post.id}>
                   <svg width="16" height="16" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
                     <path d="M8.33268 5.00033H11.666C11.666 4.5583 11.4904 4.13437 11.1779 3.82181C10.8653 3.50925 10.4414 3.33366 9.99935 3.33366C9.55732 3.33366 9.1334 3.50925 8.82084 3.82181C8.50828 4.13437 8.33268 4.5583 8.33268 5.00033ZM6.66602 5.00033C6.66602 4.11627 7.0172 3.26842 7.64233 2.6433C8.26745 2.01818 9.11529 1.66699 9.99935 1.66699C10.8834 1.66699 11.7313 2.01818 12.3564 2.6433C12.9815 3.26842 13.3327 4.11627 13.3327 5.00033H17.4993C17.7204 5.00033 17.9323 5.08812 18.0886 5.2444C18.2449 5.40068 18.3327 5.61265 18.3327 5.83366C18.3327 6.05467 18.2449 6.26663 18.0886 6.42291C17.9323 6.57919 17.7204 6.66699 17.4993 6.66699H16.7643L16.026 15.2837C15.955 16.1157 15.5743 16.8908 14.9592 17.4556C14.3441 18.0204 13.5394 18.3338 12.7043 18.3337H7.29435C6.45927 18.3338 5.65458 18.0204 5.03947 17.4556C4.42437 16.8908 4.04366 16.1157 3.97268 15.2837L3.23435 6.66699H2.49935C2.27834 6.66699 2.06637 6.57919 1.91009 6.42291C1.75381 6.26663 1.66602 6.05467 1.66602 5.83366C1.66602 5.61265 1.75381 5.40068 1.91009 5.2444C2.06637 5.08812 2.27834 5.00033 2.49935 5.00033H6.66602ZM12.4993 10.0003C12.4993 9.77931 12.4116 9.56735 12.2553 9.41107C12.099 9.25479 11.887 9.16699 11.666 9.16699C11.445 9.16699 11.233 9.25479 11.0768 9.41107C10.9205 9.56735 10.8327 9.77931 10.8327 10.0003V13.3337C10.8327 13.5547 10.9205 13.7666 11.0768 13.9229C11.233 14.0792 11.445 14.167 11.666 14.167C11.887 14.167 12.099 14.0792 12.2553 13.9229C12.4116 13.7666 12.4993 13.5547 12.4993 13.3337V10.0003ZM8.33268 9.16699C8.5537 9.16699 8.76566 9.25479 8.92194 9.41107C9.07822 9.56735 9.16602 9.77931 9.16602 10.0003V13.3337C9.16602 13.5547 9.07822 13.7666 8.92194 13.9229C8.76566 14.0792 8.5537 14.167 8.33268 14.167C8.11167 14.167 7.89971 14.0792 7.74343 13.9229C7.58715 13.7666 7.49935 13.5547 7.49935 13.3337V10.0003C7.49935 9.77931 7.58715 9.56735 7.74343 9.41107C7.89971 9.25479 8.11167 9.16699 8.33268 9.16699ZM5.63268 15.142C5.66819 15.5582 5.85866 15.9458 6.16638 16.2283C6.47411 16.5107 6.87667 16.6673 7.29435 16.667H12.7043C13.1217 16.6668 13.5239 16.5101 13.8313 16.2277C14.1386 15.9453 14.3289 15.5579 14.3643 15.142L15.091 6.66699H4.90768L5.63268 15.142Z" fill="#C4C4C4"/>
@@ -335,6 +341,7 @@ const { existingBlogTags, blogList } = Astro.props;
     }
 
     &_btn{
+      position: relative;
       padding: 12px 16px;
       border-radius: var(--border-radius-m);
       font-size: var(--font-size-xxs);
@@ -345,6 +352,8 @@ const { existingBlogTags, blogList } = Astro.props;
         display: flex;
         align-items: center;
         gap: 8px;
+        position: sticky;
+        top: 0;
 
         >.save{
           color: var(--main-font-color);
@@ -364,6 +373,7 @@ const { existingBlogTags, blogList } = Astro.props;
   }
   .posted{
     width: calc(100% - 32px);
+    min-height: 800px;
     margin-top: 40px;
     padding-top: 40px;
     margin-inline: 16px;
@@ -419,6 +429,30 @@ const { existingBlogTags, blogList } = Astro.props;
           align-items: center;
           gap: 8px;
           justify-content: right;
+
+          >.to-draft{
+            width: auto;
+          height: auto;
+          padding-bottom: 2px;
+          margin-right: 8px;
+          font-size: var(--font-size-xs);
+          color: var(--sub-font-color);
+          border: none;
+          border-bottom: 1px solid var(--sub-border-color);
+          border-radius: 0;
+          background-color: transparent;
+          }
+        }
+
+        &_btn{
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          border-radius: var(--border-radius-s);
+          width: 32px;
+          height: 32px;
+          background-color: var(--btn-bg-color);
+          border: 1px solid var(--main-border-color);
         }
       }
     }
@@ -470,6 +504,27 @@ const { existingBlogTags, blogList } = Astro.props;
         align-items: center;
         gap: 8px;
 
+        >.swich{
+          width: auto;
+          height: auto;
+          padding-bottom: 4px;
+          margin-right: 8px;
+          font-size: var(--font-size-xs);
+          color: var(--sub-font-color);
+          border: none;
+          border-bottom: 1px solid var(--sub-border-color);
+          border-radius: 0;
+          background-color: transparent;
+          display: flex;
+          align-items: center;
+          gap: 4px;
+          cursor: pointer;
+
+          >p{
+            color: var(--sub-font-color);
+          }
+        }
+
         >button{
           display: flex;
           align-items: center;
@@ -483,6 +538,7 @@ const { existingBlogTags, blogList } = Astro.props;
         height: 32px;
         background-color: var(--btn-bg-color);
         border: 1px solid var(--main-border-color);
+        color: var(--sub-font-color);
       }
     }
   }
@@ -524,6 +580,26 @@ const { existingBlogTags, blogList } = Astro.props;
       border: 1px solid var(--main-border-color);
       border-radius: var(--border-radius-s);
       font-size: var(--font-size-xs);
+      color: var(--sub-font-color);
+    }
+  }
+  .swich{
+    width: auto;
+    height: auto;
+    padding-bottom: 4px;
+    margin-right: 8px;
+    font-size: var(--font-size-xs);
+    color: var(--sub-font-color);
+    border: none;
+    border-bottom: 1px solid var(--sub-border-color);
+    border-radius: 0;
+    background-color: transparent;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    cursor: pointer;
+
+    >p{
       color: var(--sub-font-color);
     }
   }
@@ -605,7 +681,6 @@ const { existingBlogTags, blogList } = Astro.props;
     }
   }
 
-  /* モーダルのスタイル */
   .modal {
     display: none;
     position: fixed;
@@ -700,6 +775,7 @@ const { existingBlogTags, blogList } = Astro.props;
       }
     }
   }
+
 </style>
 
 <script>
@@ -901,4 +977,249 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 });
+
+document.addEventListener('DOMContentLoaded', () => {
+  // 投稿一覧の各投稿に対してイベントリスナーを設定
+  const blogItems = document.querySelectorAll('.posted_blog-item');
+  
+  blogItems.forEach(item => {
+    const blogId = item.getAttribute('key'); // 投稿IDを取得
+    const status = item.getAttribute('data-status');
+    
+    // 下書きボタンと公開ボタンを取得（IDで識別）
+    const toDraftBtn = document.getElementById(`draft-btn-${blogId}`);
+    const toPublishBtn = document.getElementById(`publish-btn-${blogId}`);
+    
+    // 公開状態の投稿には下書きボタンを表示、下書き状態の投稿には公開ボタンを表示
+    if (toDraftBtn && status === 'public') {
+      toDraftBtn.style.display = 'flex';
+      if (toPublishBtn) toPublishBtn.style.display = 'none';
+      
+      toDraftBtn.addEventListener('click', async function(e) {
+        e.preventDefault();
+        
+        if (confirm('この投稿を下書き状態に変更しますか？')) {
+          try {
+            // ボタンの表示を変更
+            this.textContent = '処理中...';
+            this.disabled = true;
+            
+            // FormDataを作成
+            const formData = new FormData();
+            formData.append('action', 'update_blog_status');
+            formData.append('blogId', blogId);
+            formData.append('status', 'draft');
+            
+            // POSTリクエストを送信
+            const response = await fetch('', {
+              method: 'POST',
+              body: formData
+            });
+            
+            if (!response.ok) {
+              throw new Error('サーバーエラーが発生しました');
+            }
+            
+            // 成功したらページをリロード
+            window.location.reload();
+            
+          } catch (error) {
+            console.error('エラー:', error);
+            alert('処理中にエラーが発生しました: ' + error.message);
+            
+            // エラー時はボタンを元に戻す
+            this.textContent = '下書きに移動';
+            this.disabled = false;
+          }
+        }
+      });
+    } else if (toPublishBtn && status === 'draft') {
+      if (toDraftBtn) toDraftBtn.style.display = 'none';
+      toPublishBtn.style.display = 'flex';
+      
+      toPublishBtn.addEventListener('click', async function(e) {
+        e.preventDefault();
+        
+        if (confirm('この投稿を公開しますか？')) {
+          try {
+            // ボタンの表示を変更
+            this.textContent = '処理中...';
+            this.disabled = true;
+            
+            // FormDataを作成
+            const formData = new FormData();
+            formData.append('action', 'update_blog_status');
+            formData.append('blogId', blogId);
+            formData.append('status', 'public');
+            
+            // POSTリクエストを送信
+            const response = await fetch('', {
+              method: 'POST',
+              body: formData
+            });
+            
+            if (!response.ok) {
+              throw new Error('サーバーエラーが発生しました');
+            }
+            
+            // 成功したらページをリロード
+            window.location.reload();
+            
+          } catch (error) {
+            console.error('エラー:', error);
+            alert('処理中にエラーが発生しました: ' + error.message);
+            
+            // エラー時はボタンを元に戻す
+            this.textContent = '公開する';
+            this.disabled = false;
+          }
+        }
+      });
+    }
+  });
+});
+
+// ブログコンテンツの編集機能を強化
+document.addEventListener('DOMContentLoaded', () => {
+  // ブログコンテンツの編集可能な要素に対するイベントリスナーを設定
+  const blogContentArea = document.querySelector('.blog-content-area');
+  
+  if (blogContentArea) {
+    // コンテンツエリア内のクリックイベントを委譲して処理
+    blogContentArea.addEventListener('click', (e) => {
+      // クリックされた要素を取得
+      const target = e.target;
+      
+      // テキスト要素かどうかを確認（pタグやh1-h6タグなど）
+      if (target.matches('p, h1, h2, h3, h4, h5, h6') && target.isContentEditable) {
+        // フォーカスを設定
+        target.focus();
+        
+        // テキストを全選択
+        const selection = window.getSelection();
+        const range = document.createRange();
+        range.selectNodeContents(target);
+        selection.removeAllRanges();
+        selection.addRange(range);
+      }
+      
+      // または親要素が.blog_wrapperの場合、その中のテキスト要素を探す
+      const wrapper = target.closest('.blog_wrapper');
+      if (wrapper && target !== wrapper) {
+        const textElement = wrapper.querySelector('p, h1, h2, h3, h4, h5, h6');
+        
+        if (textElement && textElement.isContentEditable) {
+          // フォーカスを設定
+          textElement.focus();
+          
+          // テキストを全選択
+          const selection = window.getSelection();
+          const range = document.createRange();
+          range.selectNodeContents(textElement);
+          selection.removeAllRanges();
+          selection.addRange(range);
+        }
+      }
+    });
+  }
+});
+
+// ブログ要素の追加機能
+function addBlogElement(type) {
+  const blogContentArea = document.querySelector('.blog-content-area');
+  if (!blogContentArea) return;
+  
+  // 新しいブログ要素を作成
+  const wrapper = document.createElement('div');
+  wrapper.className = 'blog_wrapper';
+  
+  let contentElement;
+  
+  switch (type) {
+    case 'heading1':
+      contentElement = document.createElement('h1');
+      contentElement.textContent = '見出しを入力';
+      break;
+    case 'heading2':
+      contentElement = document.createElement('h2');
+      contentElement.textContent = '小見出しを入力';
+      break;
+    case 'paragraph':
+      contentElement = document.createElement('p');
+      contentElement.textContent = 'テキストを入力';
+      break;
+    case 'image':
+      // 画像アップロード用の要素
+      contentElement = document.createElement('div');
+      contentElement.className = 'blog_image-placeholder';
+      contentElement.innerHTML = `
+        <input type="file" accept="image/*" style="display: none;">
+        <button class="upload-image-btn">画像をアップロード</button>
+      `;
+      break;
+    default:
+      contentElement = document.createElement('p');
+      contentElement.textContent = 'テキストを入力';
+  }
+  
+  // テキスト要素の場合は編集可能に
+  if (type !== 'image') {
+    contentElement.contentEditable = true;
+  }
+  
+  wrapper.appendChild(contentElement);
+  blogContentArea.appendChild(wrapper);
+  
+  // 新しく追加した要素にフォーカスして全選択
+  if (type !== 'image') {
+    contentElement.focus();
+    
+    // テキストを全選択
+    const selection = window.getSelection();
+    const range = document.createRange();
+    range.selectNodeContents(contentElement);
+    selection.removeAllRanges();
+    selection.addRange(range);
+  }
+}
+
+// ブログ要素追加ボタンにイベントリスナーを設定
+document.addEventListener('DOMContentLoaded', () => {
+  const blogElemButtons = document.querySelectorAll('.blog-elems_elem');
+  
+  blogElemButtons.forEach(button => {
+    button.addEventListener('click', () => {
+      const type = button.getAttribute('data-type');
+      addBlogElement(type);
+    });
+  });
+});
+
+// ブログコンテンツを抽出する関数
+function extractBlogContent() {
+  const blogContentArea = document.querySelector('.blog-content-area');
+  if (!blogContentArea) return '';
+  
+  // ブログコンテンツのHTMLを取得
+  const contentHtml = blogContentArea.innerHTML;
+  
+  // 必要に応じてHTMLをクリーンアップまたは加工
+  // 例: 不要な属性を削除するなど
+  
+  return contentHtml;
+}
+
+// フォーム送信前にブログコンテンツを隠しフィールドに設定
+document.addEventListener('DOMContentLoaded', () => {
+  const blogForm = document.querySelector('form.cms');
+  const blogTextContent = document.getElementById('blogTextContent');
+  
+  if (blogForm && blogTextContent) {
+    blogForm.addEventListener('submit', () => {
+      const blogContent = extractBlogContent();
+      blogTextContent.value = blogContent;
+    });
+  }
+});
+
 </script>
