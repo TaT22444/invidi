@@ -360,14 +360,92 @@ if (method === "POST") {
         });
       }
     }
+  } else if (action === "add_sns_link") {
+    const projectIdFromForm = formData.get("projectId")?.toString();
+    const snsType = formData.get("snsType")?.toString();
+    const snsName = formData.get("snsName")?.toString();
+    const snsDescription = formData.get("snsDescription")?.toString();
+    
+    if (projectIdFromForm && snsType && snsName) {
+      try {
+        const projectRef = db.collection("projects").doc(projectIdFromForm);
+        const projectSnap = await projectRef.get();
+        
+        if (projectSnap.exists) {
+          const projectData = projectSnap.data();
+          const snsLinks = projectData.snsLinks || [];
+          
+          // 新しいSNSリンクを追加
+          snsLinks.push({
+            type: snsType,
+            name: snsName,
+            description: snsDescription || ""
+          });
+          
+          // Firestoreに保存
+          await projectRef.update({ snsLinks });
+          
+          // 成功レスポンス
+          return new Response(JSON.stringify({ success: true }), {
+            status: 200,
+            headers: { "Content-Type": "application/json" }
+          });
+        }
+      } catch (error) {
+        console.error("SNSリンクの追加に失敗しました:", error);
+        return new Response(JSON.stringify({ error: "SNSリンクの追加に失敗しました" }), {
+          status: 500,
+          headers: { "Content-Type": "application/json" }
+        });
+      }
+    }
+  } else if (action === "delete_sns_link") {
+    const projectIdFromForm = formData.get("projectId")?.toString();
+    const snsIndex = parseInt(formData.get("snsIndex")?.toString() || "-1");
+    
+    if (projectIdFromForm && snsIndex >= 0) {
+      try {
+        const projectRef = db.collection("projects").doc(projectIdFromForm);
+        const projectSnap = await projectRef.get();
+        
+        if (projectSnap.exists) {
+          const projectData = projectSnap.data();
+          const snsLinks = projectData.snsLinks || [];
+          
+          // 指定されたインデックスのSNSリンクを削除
+          if (snsIndex < snsLinks.length) {
+            snsLinks.splice(snsIndex, 1);
+            
+            // Firestoreに保存
+            await projectRef.update({ snsLinks });
+            
+            // 成功レスポンス
+            return new Response(JSON.stringify({ success: true }), {
+              status: 200,
+              headers: { "Content-Type": "application/json" }
+            });
+          }
+        }
+      } catch (error) {
+        console.error("SNSリンクの削除に失敗しました:", error);
+        return new Response(JSON.stringify({ error: "SNSリンクの削除に失敗しました" }), {
+          status: 500,
+          headers: { "Content-Type": "application/json" }
+        });
+      }
+    }
   }
 }
 
 const { projectId } = Astro.params;
 
+// プロジェクトデータの取得
 let currentProject = null;
-if (userData && userData.projects) {
-  currentProject = userData.projects.find((p: { id: any; }) => p.id === projectId);
+if (projectId) {
+  const projectSnap = await db.collection("projects").doc(projectId).get();
+  if (projectSnap.exists) {
+    currentProject = projectSnap.data();
+  }
 }
 
 if (!currentProject) {
@@ -581,6 +659,112 @@ const userId = authUser?.uid || "";
         </div>
       </div>
     </section>
+    <div class="profile-section">
+  <div class="section-title-wrapper">
+    <h3 class="section-title">SNSリンク作成</h3>
+    <p>フリープランでは、5つまでsnsを表示できます</p>
+  </div>
+  
+  <!-- SNS追加フォーム -->
+  <div class="sns-form">
+    <div class="sns-form-row">
+      <div class="sns-type">
+        <label for="sns-type">SNS:</label>
+        <div class="select-wrapper">
+          <select id="sns-type">
+            <option value="instagram">Instagram</option>
+            <option value="twitter">Twitter</option>
+            <option value="facebook">Facebook</option>
+            <option value="youtube">YouTube</option>
+            <option value="tiktok">TikTok</option>
+            <option value="line">LINE</option>
+          </select>
+          <div class="select-icon">
+            <svg width="16" height="17" viewBox="0 0 16 17" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <g clip-path="url(#clip0_628_234)">
+                <path fill-rule="evenodd" clip-rule="evenodd" d="M8.47121 10.9712C8.34619 11.0962 8.17666 11.1664 7.99988 11.1664C7.8231 11.1664 7.65356 11.0962 7.52855 10.9712L3.75721 7.1999C3.69354 7.13841 3.64275 7.06484 3.60781 6.98351C3.57287 6.90217 3.55448 6.81469 3.55371 6.72617C3.55294 6.63765 3.56981 6.54986 3.60333 6.46793C3.63685 6.386 3.68635 6.31157 3.74895 6.24897C3.81155 6.18638 3.88598 6.13688 3.96791 6.10336C4.04984 6.06983 4.13763 6.05297 4.22615 6.05374C4.31467 6.05451 4.40215 6.0729 4.48348 6.10784C4.56482 6.14277 4.63838 6.19356 4.69988 6.25724L7.99988 9.55724L11.2999 6.25724C11.4256 6.1358 11.594 6.0686 11.7688 6.07012C11.9436 6.07164 12.1108 6.14175 12.2344 6.26536C12.358 6.38896 12.4281 6.55617 12.4297 6.73097C12.4312 6.90577 12.364 7.07417 12.2425 7.1999L8.47121 10.9712Z" fill="white"/>
+              </g>
+              <defs>
+                <clipPath id="clip0_628_234">
+                  <rect width="16" height="16" fill="white" transform="matrix(0 1 -1 0 16 0.5)"/>
+                </clipPath>
+              </defs>
+            </svg>
+          </div>
+        </div>
+      </div>
+      <span class="slash"></span>
+      <div class="sns-account">
+        <label for="sns-account">アカウント名:</label>
+        <input type="text" id="sns-account" placeholder="アカウント名を入力">
+      </div>
+      <span class="slash"></span>
+      <div class="sns-description">
+        <label for="sns-description">アカウントの簡単な説明:</label>
+        <input type="text" id="sns-description" placeholder="例: 相原立弥のインスタアカウント">
+      </div>
+      <button id="add-sns-btn" class="add-sns-btn">追加</button>
+    </div>
+  </div>
+  
+  <!-- 登録済みSNSリスト -->
+  <div class="sns-list">
+    <div class="sns-list-title">
+      <h4>登録済みSNS</h4>
+      <p>
+        <span>{currentProject?.snsLinks?.length || 0}</span>
+        <span>/</span>
+        <span>5</span>
+      </p>
+    </div>
+    <div id="sns-items" class="sns-items">
+      <!-- SNSアイテムはJavaScriptで動的に生成 -->
+      {currentProject?.snsLinks && currentProject.snsLinks.map((link, index) => (
+        <div class="sns-item" data-index={index}>
+          <div class="sns-icon">
+            {link.type === 'instagram' && (
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zm0-2.163c-3.259 0-3.667.014-4.947.072-4.358.2-6.78 2.618-6.98 6.98-.059 1.281-.073 1.689-.073 4.948 0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98 1.281.058 1.689.072 4.948.072 3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98-1.281-.059-1.69-.073-4.949-.073zm0 5.838c-3.403 0-6.162 2.759-6.162 6.162s2.759 6.163 6.162 6.163 6.162-2.759 6.162-6.163c0-3.403-2.759-6.162-6.162-6.162zm0 10.162c-2.209 0-4-1.79-4-4 0-2.209 1.791-4 4-4s4 1.791 4 4c0 2.21-1.791 4-4 4zm6.406-11.845c-.796 0-1.441.645-1.441 1.44s.645 1.44 1.441 1.44c.795 0 1.439-.645 1.439-1.44s-.644-1.44-1.439-1.44z" fill="white"/>
+              </svg>
+            )}
+            {link.type === 'twitter' && (
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M23.953 4.57a10 10 0 01-2.825.775 4.958 4.958 0 002.163-2.723c-.951.555-2.005.959-3.127 1.184a4.92 4.92 0 00-8.384 4.482C7.69 8.095 4.067 6.13 1.64 3.162a4.822 4.822 0 00-.666 2.475c0 1.71.87 3.213 2.188 4.096a4.904 4.904 0 01-2.228-.616v.06a4.923 4.923 0 003.946 4.827 4.996 4.996 0 01-2.212.085 4.936 4.936 0 004.604 3.417 9.867 9.867 0 01-6.102 2.105c-.39 0-.779-.023-1.17-.067a13.995 13.995 0 007.557 2.209c9.053 0 13.998-7.496 13.998-13.985 0-.21 0-.42-.015-.63A9.935 9.935 0 0024 4.59z" fill="white"/>
+              </svg>
+            )}
+            {link.type === 'facebook' && (
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z" fill="white"/>
+              </svg>
+            )}
+            {link.type === 'youtube' && (
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z" fill="white"/>
+              </svg>
+            )}
+            {link.type === 'tiktok' && (
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M12.525.02c1.31-.02 2.61-.01 3.91-.02.08 1.53.63 3.09 1.75 4.17 1.12 1.11 2.7 1.62 4.24 1.79v4.03c-1.44-.05-2.89-.35-4.2-.97-.57-.26-1.1-.59-1.62-.93-.01 2.92.01 5.84-.02 8.75-.08 1.4-.54 2.79-1.35 3.94-1.31 1.92-3.58 3.17-5.91 3.21-1.43.08-2.86-.31-4.08-1.03-2.02-1.19-3.44-3.37-3.65-5.71-.02-.5-.03-1-.01-1.49.18-1.9 1.12-3.72 2.58-4.96 1.66-1.44 3.98-2.13 6.15-1.72.02 1.48-.04 2.96-.04 4.44-.99-.32-2.15-.23-3.02.37-.63.41-1.11 1.04-1.36 1.75-.21.51-.15 1.07-.14 1.61.24 1.64 1.82 3.02 3.5 2.87 1.12-.01 2.19-.66 2.77-1.61.19-.33.4-.67.41-1.06.1-1.79.06-3.57.07-5.36.01-4.03-.01-8.05.02-12.07z" fill="white"/>
+              </svg>
+            )}
+            {link.type === 'line' && (
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M24 10.304c0-5.369-5.383-9.738-12-9.738-6.616 0-12 4.369-12 9.738 0 4.814 4.269 8.846 10.036 9.608.391.084.922.258 1.057.592.121.303.079.778.039 1.085l-.171 1.027c-.053.303-.242 1.186 1.039.647 1.281-.54 6.911-4.069 9.428-6.967 1.739-1.907 2.572-3.843 2.572-5.992zm-18.988-2.595c.129 0 .234.105.234.234v4.153h2.287c.129 0 .233.104.233.233v.842c0 .129-.104.234-.233.234h-3.363c-.063 0-.119-.025-.161-.065-.043-.043-.068-.1-.068-.169v-5.229c0-.129.104-.233.233-.233h.838zm14.992 0c.129 0 .233.105.233.234v.842c0 .129-.104.234-.233.234h-2.287v.883h2.287c.129 0 .233.105.233.234v.842c0 .129-.104.233-.233.233h-2.287v.884h2.287c.129 0 .233.105.233.233v.842c0 .129-.104.234-.233.234h-3.363c-.063 0-.12-.025-.162-.065-.043-.043-.067-.1-.067-.169v-5.229c0-.063.025-.12.067-.162.042-.043.099-.067.162-.067h3.363zm-10.026.001c.129 0 .233.104.233.233v5.229c0 .129-.104.234-.233.234h-.837c-.129 0-.234-.105-.234-.234v-5.229c0-.129.105-.233.234-.233h.837zm2.919 0c.129 0 .233.104.233.233v5.229c0 .129-.104.234-.233.234h-.837c-.129 0-.234-.105-.234-.234v-3.176l-1.077 1.645-.536.831c-.039.059-.106.098-.181.098-.075 0-.142-.039-.181-.098l-.535-.831-1.077-1.645v3.176c0 .129-.105.234-.234.234h-.837c-.129 0-.234-.105-.234-.234v-5.229c0-.129.105-.233.234-.233h.837c.075 0 .142.039.18.098l1.853 2.842 1.853-2.842c.039-.059.105-.098.181-.098h.837z" fill="white"/>
+              </svg>
+            )}
+          </div>
+          <span class="slash"></span>
+          <div class="sns-info">
+            <span class="sns-name">{link.name}</span>
+            <span class="slash"></span>
+            <span class="sns-desc">{link.description}</span>
+          </div>
+          <button class="delete-sns-btn" data-index={index}>×</button>
+        </div>
+      ))}
+    </div>
+  </div>
+</div>
   </div>
 
 <div id="custom-alert" class="custom-alert">
@@ -743,7 +927,7 @@ const userId = authUser?.uid || "";
 
     &_banner{
       width: 100%;
-      height: 120px;
+      height: 104px;
       background-color: var(--elem-bg-color); 
       border-radius: var(--border-radius-m);
       display: flex;
@@ -1584,8 +1768,6 @@ const userId = authUser?.uid || "";
     isReloadAttempted = false;
     clearTimeout(reloadTimer);
   });
-
-  // 既存のコードはそのまま
   
   document.addEventListener('DOMContentLoaded', () => {
     // 既存の要素取得に追加
@@ -1647,7 +1829,292 @@ const userId = authUser?.uid || "";
         }
       });
     }
+  });
+
+  document.addEventListener('DOMContentLoaded', () => {
+    // SNS関連の要素を取得
+    const snsTypeSelect = document.getElementById('sns-type');
+    const snsAccountInput = document.getElementById('sns-account');
+    const snsDescriptionInput = document.getElementById('sns-description');
+    const addSnsBtn = document.getElementById('add-sns-btn');
+    const snsItemsContainer = document.getElementById('sns-items');
     
-    // 既存のコードはそのまま
+    // SNSアイコンのマッピング
+    const snsIcons = {
+      instagram: `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zm0-2.163c-3.259 0-3.667.014-4.947.072-4.358.2-6.78 2.618-6.98 6.98-.059 1.281-.073 1.689-.073 4.948 0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98 1.281.058 1.689.072 4.948.072 3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98-1.281-.059-1.69-.073-4.949-.073zm0 5.838c-3.403 0-6.162 2.759-6.162 6.162s2.759 6.163 6.162 6.163 6.162-2.759 6.162-6.163c0-3.403-2.759-6.162-6.162-6.162zm0 10.162c-2.209 0-4-1.79-4-4 0-2.209 1.791-4 4-4s4 1.791 4 4c0 2.21-1.791 4-4 4zm6.406-11.845c-.796 0-1.441.645-1.441 1.44s.645 1.44 1.441 1.44c.795 0 1.439-.645 1.439-1.44s-.644-1.44-1.439-1.44z" fill="#fff"/>
+                  </svg>`,
+      twitter: `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M23.953 4.57a10 10 0 01-2.825.775 4.958 4.958 0 002.163-2.723c-.951.555-2.005.959-3.127 1.184a4.92 4.92 0 00-8.384 4.482C7.69 8.095 4.067 6.13 1.64 3.162a4.822 4.822 0 00-.666 2.475c0 1.71.87 3.213 2.188 4.096a4.904 4.904 0 01-2.228-.616v.06a4.923 4.923 0 003.946 4.827 4.996 4.996 0 01-2.212.085 4.936 4.936 0 004.604 3.417 9.867 9.867 0 01-6.102 2.105c-.39 0-.779-.023-1.17-.067a13.995 13.995 0 007.557 2.209c9.053 0 13.998-7.496 13.998-13.985 0-.21 0-.42-.015-.63A9.935 9.935 0 0024 4.59z" fill="currentColor"/>
+                </svg>`,
+      facebook: `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z" fill="currentColor"/>
+                </svg>`,
+      youtube: `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z" fill="white"/>
+              </svg>`,
+      tiktok: `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M12.525.02c1.31-.02 2.61-.01 3.91-.02.08 1.53.63 3.09 1.75 4.17 1.12 1.11 2.7 1.62 4.24 1.79v4.03c-1.44-.05-2.89-.35-4.2-.97-.57-.26-1.1-.59-1.62-.93-.01 2.92.01 5.84-.02 8.75-.08 1.4-.54 2.79-1.35 3.94-1.31 1.92-3.58 3.17-5.91 3.21-1.43.08-2.86-.31-4.08-1.03-2.02-1.19-3.44-3.37-3.65-5.71-.02-.5-.03-1-.01-1.49.18-1.9 1.12-3.72 2.58-4.96 1.66-1.44 3.98-2.13 6.15-1.72.02 1.48-.04 2.96-.04 4.44-.99-.32-2.15-.23-3.02.37-.63.41-1.11 1.04-1.36 1.75-.21.51-.15 1.07-.14 1.61.24 1.64 1.82 3.02 3.5 2.87 1.12-.01 2.19-.66 2.77-1.61.19-.33.4-.67.41-1.06.1-1.79.06-3.57.07-5.36.01-4.03-.01-8.05.02-12.07z" fill="white"/>
+              </svg>`,
+      line: `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M24 10.304c0-5.369-5.383-9.738-12-9.738-6.616 0-12 4.369-12 9.738 0 4.814 4.269 8.846 10.036 9.608.391.084.922.258 1.057.592.121.303.079.778.039 1.085l-.171 1.027c-.053.303-.242 1.186 1.039.647 1.281-.54 6.911-4.069 9.428-6.967 1.739-1.907 2.572-3.843 2.572-5.992zm-18.988-2.595c.129 0 .234.105.234.234v4.153h2.287c.129 0 .233.104.233.233v.842c0 .129-.104.234-.233.234h-3.363c-.063 0-.119-.025-.161-.065-.043-.043-.068-.1-.068-.169v-5.229c0-.129.104-.233.233-.233h.838zm14.992 0c.129 0 .233.105.233.234v.842c0 .129-.104.234-.233.234h-2.287v.883h2.287c.129 0 .233.105.233.234v.842c0 .129-.104.233-.233.233h-2.287v.884h2.287c.129 0 .233.105.233.233v.842c0 .129-.104.234-.233.234h-3.363c-.063 0-.12-.025-.162-.065-.043-.043-.067-.1-.067-.169v-5.229c0-.063.025-.12.067-.162.042-.043.099-.067.162-.067h3.363zm-10.026.001c.129 0 .233.104.233.233v5.229c0 .129-.104.234-.233.234h-.837c-.129 0-.234-.105-.234-.234v-5.229c0-.129.105-.233.234-.233h.837zm2.919 0c.129 0 .233.104.233.233v5.229c0 .129-.104.234-.233.234h-.837c-.129 0-.234-.105-.234-.234v-3.176l-1.077 1.645-.536.831c-.039.059-.106.098-.181.098-.075 0-.142-.039-.181-.098l-.535-.831-1.077-1.645v3.176c0 .129-.105.234-.234.234h-.837c-.129 0-.234-.105-.234-.234v-5.229c0-.129.105-.233.234-.233h.837c.075 0 .142.039.18.098l1.853 2.842 1.853-2.842c.039-.059.105-.098.181-.098h.837z" fill="white"/>
+            </svg>`
+    };
+    
+    // SNS追加ボタンのクリックイベント
+    if (addSnsBtn) {
+      addSnsBtn.addEventListener('click', async () => {
+        const snsType = snsTypeSelect?.value;
+        const snsName = snsAccountInput?.value.trim();
+        const snsDescription = snsDescriptionInput?.value.trim();
+        
+        if (!snsType || !snsName) {
+          alert('SNSタイプとアカウント名を入力してください');
+          return;
+        }
+        
+        try {
+          // FormDataを作成
+          const formData = new FormData();
+          formData.append('action', 'add_sns_link');
+          formData.append('projectId', projectIdFromUrl);
+          formData.append('snsType', snsType);
+          formData.append('snsName', snsName);
+          formData.append('snsDescription', snsDescription);
+          
+          // APIリクエスト
+          const response = await fetch(window.location.href, {
+            method: 'POST',
+            body: formData
+          });
+          
+          if (!response.ok) {
+            throw new Error('SNSリンクの追加に失敗しました');
+          }
+          
+          // 成功したら入力フィールドをクリア
+          snsAccountInput.value = '';
+          snsDescriptionInput.value = '';
+          
+          // 新しいSNSアイテムを追加
+          const newSnsItem = document.createElement('div');
+          newSnsItem.className = 'sns-item';
+          newSnsItem.dataset.index = document.querySelectorAll('.sns-item').length.toString();
+          
+          newSnsItem.innerHTML = `
+            <div class="sns-icon">
+              ${snsIcons[snsType] || ''}
+            </div>
+            <span class="slash"></span>
+            <div class="sns-info">
+              <span class="sns-name">${snsName}</span>
+              <span class="slash"></span>
+              <span class="sns-desc">${snsDescription}</span>
+            </div>
+            <button class="delete-sns-btn" data-index="${newSnsItem.dataset.index}">×</button>
+          `;
+          
+          snsItemsContainer?.appendChild(newSnsItem);
+          
+          // 削除ボタンにイベントリスナーを追加
+          const deleteBtn = newSnsItem.querySelector('.delete-sns-btn');
+          if (deleteBtn) {
+            deleteBtn.addEventListener('click', handleDeleteSns);
+          }
+          
+          // 登録済みSNS数の表示を更新
+          const countElement = document.querySelector('.sns-list-title p span:first-child');
+          if (countElement) {
+            const currentCount = parseInt(countElement.textContent || '0') + 1;
+            countElement.textContent = currentCount.toString();
+          }
+          
+          console.log('SNSリンクが追加されました');
+          
+        } catch (error) {
+          console.error('SNSリンク追加中にエラーが発生しました:', error);
+          alert('SNSリンクの追加に失敗しました。もう一度お試しください。');
+        }
+      });
+    }
+    
+    // 既存のSNS削除ボタンにイベントリスナーを追加
+    document.querySelectorAll('.delete-sns-btn').forEach(btn => {
+      btn.addEventListener('click', handleDeleteSns);
+    });
+    
+    // SNS削除処理
+    async function handleDeleteSns(e) {
+      const btn = e.currentTarget;
+      const snsItem = btn.closest('.sns-item');
+      const snsIndex = btn.dataset.index;
+      
+      if (!snsItem || !snsIndex) return;
+      
+      if (!confirm('このSNSリンクを削除してもよろしいですか？')) return;
+      
+      try {
+        // FormDataを作成
+        const formData = new FormData();
+        formData.append('action', 'delete_sns_link');
+        formData.append('projectId', projectIdFromUrl);
+        formData.append('snsIndex', snsIndex);
+        
+        // APIリクエスト
+        const response = await fetch(window.location.href, {
+          method: 'POST',
+          body: formData
+        });
+        
+        if (!response.ok) {
+          throw new Error('SNSリンクの削除に失敗しました');
+        }
+        
+        // 成功したらUIから削除
+        snsItem.remove();
+        
+        // インデックスを更新
+        document.querySelectorAll('.sns-item').forEach((item, idx) => {
+          item.dataset.index = idx.toString();
+          const deleteBtn = item.querySelector('.delete-sns-btn');
+          if (deleteBtn) {
+            deleteBtn.dataset.index = idx.toString();
+          }
+        });
+        
+        // 登録済みSNS数の表示を更新
+        const countElement = document.querySelector('.sns-list-title p span:first-child');
+        if (countElement) {
+          const currentCount = parseInt(countElement.textContent || '0') - 1;
+          countElement.textContent = currentCount.toString();
+        }
+        
+        console.log('SNSリンクが削除されました');
+        
+      } catch (error) {
+        console.error('SNSリンク削除中にエラーが発生しました:', error);
+        alert('SNSリンクの削除に失敗しました。もう一度お試しください。');
+      }
+    }
+  });
+
+  document.addEventListener('DOMContentLoaded', () => {
+    // SNS関連の要素を取得
+    const snsTypeSelect = document.getElementById('sns-type');
+    const snsAccountInput = document.getElementById('sns-account');
+    const snsDescriptionInput = document.getElementById('sns-description');
+    const addSnsBtn = document.getElementById('add-sns-btn');
+    const snsItemsContainer = document.getElementById('sns-items');
+    
+    // セレクトボックスのラッパーをクリックしたときにセレクトボックスをクリックする
+    const selectWrapper = document.querySelector('.select-wrapper');
+    if (selectWrapper) {
+      selectWrapper.addEventListener('click', (e) => {
+        // セレクトボックス自体がクリックされた場合は何もしない
+        if (e.target.tagName === 'SELECT') return;
+        
+        // セレクトボックスをクリック
+        const select = selectWrapper.querySelector('select');
+        if (select) {
+          select.click();
+        }
+      });
+    }
+    
+    // プロジェクトIDをURLから取得
+  const projectIdFromUrl = window.location.pathname.split('/')[2];
+  
+  // ページ読み込み時にFirebaseからデータを再取得する関数
+  async function refreshSNSData() {
+    try {
+      const response = await fetch(`/api/getProject?projectId=${projectIdFromUrl}`);
+      if (!response.ok) throw new Error('プロジェクト情報の取得に失敗しました');
+      
+      const data = await response.json();
+      const snsLinks = data.snsLinks || [];
+      
+      // SNSリストを更新
+      const snsItemsContainer = document.getElementById('sns-items');
+      if (snsItemsContainer) {
+        // 既存のアイテムをクリア
+        snsItemsContainer.innerHTML = '';
+        
+        // SNSアイコンのマッピング
+        const snsIcons = {
+          instagram: `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zm0-2.163c-3.259 0-3.667.014-4.947.072-4.358.2-6.78 2.618-6.98 6.98-.059 1.281-.073 1.689-.073 4.948 0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98 1.281.058 1.689.072 4.948.072 3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98-1.281-.059-1.69-.073-4.949-.073zm0 5.838c-3.403 0-6.162 2.759-6.162 6.162s2.759 6.163 6.162 6.163 6.162-2.759 6.162-6.163c0-3.403-2.759-6.162-6.162-6.162zm0 10.162c-2.209 0-4-1.79-4-4 0-2.209 1.791-4 4-4s4 1.791 4 4c0 2.21-1.791 4-4 4zm6.406-11.845c-.796 0-1.441.645-1.441 1.44s.645 1.44 1.441 1.44c.795 0 1.439-.645 1.439-1.44s-.644-1.44-1.439-1.44z" fill="white"/>
+                      </svg>`,
+          // 他のSNSアイコン定義
+        };
+        
+        // SNSリンクを表示
+        snsLinks.forEach((link, index) => {
+          const snsItem = document.createElement('div');
+          snsItem.className = 'sns-item';
+          snsItem.dataset.index = index.toString();
+          
+          snsItem.innerHTML = `
+            <div class="sns-icon">
+              ${snsIcons[link.type] || ''}
+            </div>
+            <span class="slash"></span>
+            <div class="sns-info">
+              <span class="sns-name">${link.name}</span>
+              <span class="slash"></span>
+              <span class="sns-desc">${link.description || ''}</span>
+            </div>
+            <button class="delete-sns-btn" data-index="${index}">×</button>
+          `;
+          
+          snsItemsContainer.appendChild(snsItem);
+          
+          // 削除ボタンにイベントリスナーを追加
+          const deleteBtn = snsItem.querySelector('.delete-sns-btn');
+          if (deleteBtn) {
+            deleteBtn.addEventListener('click', handleDeleteSns);
+          }
+        });
+        
+        // カウンター更新
+        const countElement = document.querySelector('.sns-list-title p span:first-child');
+        if (countElement) {
+          countElement.textContent = snsLinks.length.toString();
+        }
+      }
+    } catch (error) {
+      console.error('SNSデータの更新に失敗しました:', error);
+    }
+  }
+  
+  // SNS追加後にデータを更新
+  async function addSnsLink(snsType, snsName, snsDescription) {
+    try {
+      // FormDataを作成
+      const formData = new FormData();
+      formData.append('action', 'add_sns_link');
+      formData.append('projectId', projectIdFromUrl);
+      formData.append('snsType', snsType);
+      formData.append('snsName', snsName);
+      formData.append('snsDescription', snsDescription);
+      
+      // APIリクエスト
+      const response = await fetch(window.location.href, {
+        method: 'POST',
+        body: formData
+      });
+      
+      if (!response.ok) {
+        throw new Error('SNSリンクの追加に失敗しました');
+      }
+      
+      // 成功したらデータを再取得して表示を更新
+      await refreshSNSData();
+      
+      return true;
+    } catch (error) {
+      console.error('SNSリンク追加中にエラーが発生しました:', error);
+      return false;
+    }
+  }
   });
 </script>
