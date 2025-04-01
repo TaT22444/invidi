@@ -30,6 +30,11 @@ import Layout from '../layouts/Layout.astro';
           <input type="password" id="password" required />
         </label>
         <br />
+        <label>
+          <input type="checkbox" id="remember-me" checked />
+          ログイン状態を維持する（1週間）
+        </label>
+        <br />
         <button type="submit">ログイン</button>
       </form>
       <script type="module">
@@ -40,6 +45,8 @@ import Layout from '../layouts/Layout.astro';
             e.preventDefault();
             const email = (document.getElementById('email')).value;
             const password = (document.getElementById('password')).value;
+            const rememberMe = (document.getElementById('remember-me')).checked;
+            
             try {
               // メール／パスワードでログイン
               const user = await loginWithEmail(email, password);

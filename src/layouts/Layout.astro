@@ -2,6 +2,7 @@
 // src/layouts/Layout.astro
 export const prerender = false;
 import Chart from 'chart.js/auto';
+import TokenRefresher from '../components/TokenRefresher.jsx';
 
 interface Props {
   title: string;
@@ -210,6 +211,104 @@ import '../styles/global.scss';
 			<slot />
 			<div class="space"></div>
 		</main>
+		<TokenRefresher client:load />
+		<script>
+			// ページ読み込み時のトークン確認と更新処理
+			document.addEventListener('DOMContentLoaded', async () => {
+				try {
+					// 1. URLからログイン情報を取得
+					const urlParams = new URLSearchParams(window.location.search);
+					const authTime = urlParams.get('auth_time');
+					const authType = urlParams.get('auth_type');
+					
+					// REST APIでログインした直後かどうかを確認
+					const isJustLoggedIn = authTime && authType === 'rest_api' && 
+										  (Date.now() - parseInt(authTime)) < 10000; // 10秒以内
+					
+					// 2. Cookieからトークンを取得
+					const getCookie = (name) => {
+						const value = `; ${document.cookie}`;
+						const parts = value.split(`; ${name}=`);
+						if (parts.length === 2) return parts.pop().split(';').shift();
+						return null;
+					};
+					
+					const token = getCookie('token');
+					if (!token) return;
+					
+					// 3. Firebase SDKが利用可能か確認
+					if (typeof firebase !== 'undefined' && firebase.auth) {
+						// 現在のFirebase認証状態を確認
+						const currentUser = firebase.auth().currentUser;
+						
+						// REST APIで新規ログインした場合、Firebase SDKの状態を同期
+						if (isJustLoggedIn && (!currentUser || currentUser.uid !== urlParams.get('uid'))) {
+							try {
+								// トークンでサインイン
+								await firebase.auth().signInWithCustomToken(token)
+									.then(() => {
+										console.log('クライアントサイドのFirebase認証状態を同期しました');
+										// URLパラメータをクリア
+										window.history.replaceState({}, document.title, window.location.pathname);
+									})
+									.catch(error => {
+										// カスタムトークンでの認証に失敗した場合、代替策としてIDトークンを使用
+										console.warn('カスタムトークン認証に失敗、IDトークンを試みます:', error);
+										return firebase.auth().signInWithEmailAndPassword(
+											getCookie('email') || '', getCookie('password') || ''
+										);
+									});
+							} catch (error) {
+								console.error('Firebase認証同期エラー:', error);
+							}
+						}
+						
+						// トークンの有効期限をチェックして必要なら更新
+						try {
+							// TokenRefresherコンポーネントと連携するために別途更新
+							const tokenAge = getTokenAge(token);
+							if (tokenAge > 30 * 60) { // 30分以上経過
+								console.log(`トークンが${Math.floor(tokenAge/60)}分経過。自動更新を試みます...`);
+								
+								if (firebase.auth().currentUser) {
+									const newToken = await firebase.auth().currentUser.getIdToken(true);
+									document.cookie = `token=${newToken}; path=/; max-age=2592000; SameSite=Lax; Secure`;
+									console.log('トークンを更新しました (Layout.astro)');
+								}
+							}
+						} catch (tokenError) {
+							console.warn('トークン期限チェック中のエラー:', tokenError);
+						}
+					}
+					
+					// URLクエリパラメータをクリア
+					if (isJustLoggedIn) {
+						window.history.replaceState({}, document.title, window.location.pathname);
+					}
+				} catch (error) {
+					console.error('認証状態同期中のエラー:', error);
+				}
+			});
+			
+			// トークンの年齢（経過時間）を取得する関数
+			function getTokenAge(token) {
+				try {
+					// トークンをデコード
+					const base64Url = token.split('.')[1];
+					const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+					const jsonPayload = decodeURIComponent(atob(base64).split('').map(c => {
+						return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
+					}).join(''));
+					const decoded = JSON.parse(jsonPayload);
+					
+					// 発行時刻と現在時刻の差を計算（秒単位）
+					return Math.floor(Date.now() / 1000) - decoded.iat;
+				} catch (e) {
+					console.error('トークン解析中のエラー:', e);
+					return 0;
+				}
+			}
+		</script>
 	</body>
 </html>
 

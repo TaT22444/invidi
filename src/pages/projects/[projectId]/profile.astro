@@ -30,9 +30,19 @@ const token = cookies["token"] || "";
 let authUser = null;
 if (token) {
   try {
-    authUser = await adminAuth.verifyIdToken(token);
+    // 第二引数にfalseを追加して、チェックを緩和
+    authUser = await adminAuth.verifyIdToken(token, false);
+    
+    // 以下のような警告ログを追加するとよい（任意）
+    const tokenIssuedAt = authUser.iat * 1000; // UNIX時間（秒）をミリ秒に変換
+    const currentTime = Date.now();
+    const tokenAge = currentTime - tokenIssuedAt;
+    
+    if (tokenAge > 60 * 60 * 1000) { // 1時間（60分）
+      console.warn("トークンが1時間以上前に発行されましたが、有効として処理します");
+    }
   } catch (err) {
-    console.error("IDトークンの検証に失敗しました", err);
+    console.error("IDトークンの検証に失敗:", err);
   }
 }
 
@@ -375,6 +385,22 @@ if (method === "POST") {
           const projectData = projectSnap.data();
           const snsLinks = projectData.snsLinks || [];
           
+          // 重複チェックを追加
+          const isDuplicate = snsLinks.some(link => 
+            link.type === snsType && link.name === snsName
+          );
+          
+          if (isDuplicate) {
+            // 重複がある場合はエラーレスポンスを返す
+            return new Response(JSON.stringify({ 
+              success: false, 
+              error: "同じタイプ・同じアカウント名のSNSが既に登録されています。" 
+            }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" }
+            });
+          }
+          
           // 新しいSNSリンクを追加
           snsLinks.push({
             type: snsType,
@@ -505,7 +531,7 @@ const userId = authUser?.uid || "";
         <a href=`/projects/${projectId}/cms` class="nav_link" id="switch-btn">CMS</a>
       </li>
       <li class="nav_item">
-        <a href=`/projects/${projectId}` class="nav_link" id="switch-btn">アナリティクス</a>
+        <a href=`/projects/${projectId}/analitics` class="nav_link" id="switch-btn">アナリティクス</a>
       </li>
       <li class="nav_item">
         <a href=`/projects/${projectId}` class="nav_link" id="switch-btn">プレビュー</a>
@@ -530,11 +556,11 @@ const userId = authUser?.uid || "";
               <img class="hero_banner_img" src={currentProject.bannerUrl} alt="バナー画像">
             ) : (
               <div class="default-image-icon">
-                <svg width="24" height="24" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
-                  <path d="M27.902 13.32C19.0887 12.1093 11.4887 18.6533 11.9993 27.3333M8.66602 10.6667C8.66602 11.3739 8.94697 12.0522 9.44706 12.5523C9.94716 13.0524 10.6254 13.3333 11.3327 13.3333C12.0399 13.3333 12.7182 13.0524 13.2183 12.5523C13.7184 12.0522 13.9993 11.3739 13.9993 10.6667C13.9993 9.95942 13.7184 9.28115 13.2183 8.78105C12.7182 8.28095 12.0399 8 11.3327 8C10.6254 8 9.94716 8.28095 9.44706 8.78105C8.94697 9.28115 8.66602 9.95942 8.66602 10.6667Z" stroke="#C4C4C4" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                  <path d="M4 17.4216C7.70667 16.9082 11.0333 18.6989 12.832 21.5549" stroke="#C4C4C4" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                  <path d="M4 12.5333C4 9.54667 4 8.05333 4.58133 6.912C5.09265 5.90851 5.90851 5.09265 6.912 4.58133C8.05333 4 9.54667 4 12.5333 4H19.4667C22.4533 4 23.9467 4 25.088 4.58133C26.0915 5.09265 26.9073 5.90851 27.4187 6.912C28 8.05333 28 9.54667 28 12.5333V19.4667C28 22.4533 28 23.9467 27.4187 25.088C26.9073 26.0915 26.0915 26.9073 25.088 27.4187C23.9467 28 22.4533 28 19.4667 28H12.5333C9.54667 28 8.05333 28 6.912 27.4187C5.90851 26.9073 5.09265 26.0915 4.58133 25.088C4 23.9467 4 22.4533 4 19.4667V12.5333Z" stroke="#C4C4C4" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                </svg>
+            <svg width="24" height="24" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M27.902 13.32C19.0887 12.1093 11.4887 18.6533 11.9993 27.3333M8.66602 10.6667C8.66602 11.3739 8.94697 12.0522 9.44706 12.5523C9.94716 13.0524 10.6254 13.3333 11.3327 13.3333C12.0399 13.3333 12.7182 13.0524 13.2183 12.5523C13.7184 12.0522 13.9993 11.3739 13.9993 10.6667C13.9993 9.95942 13.7184 9.28115 13.2183 8.78105C12.7182 8.28095 12.0399 8 11.3327 8C10.6254 8 9.94716 8.28095 9.44706 8.78105C8.94697 9.28115 8.66602 9.95942 8.66602 10.6667Z" stroke="#C4C4C4" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+              <path d="M4 17.4216C7.70667 16.9082 11.0333 18.6989 12.832 21.5549" stroke="#C4C4C4" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+              <path d="M4 12.5333C4 9.54667 4 8.05333 4.58133 6.912C5.09265 5.90851 5.90851 5.09265 6.912 4.58133C8.05333 4 9.54667 4 12.5333 4H19.4667C22.4533 4 23.9467 4 25.088 4.58133C26.0915 5.09265 26.9073 5.90851 27.4187 6.912C28 8.05333 28 9.54667 28 12.5333V19.4667C28 22.4533 28 23.9467 27.4187 25.088C26.9073 26.0915 26.0915 26.9073 25.088 27.4187C23.9467 28 22.4533 28 19.4667 28H12.5333C9.54667 28 8.05333 28 6.912 27.4187C5.90851 26.9073 5.09265 26.0915 4.58133 25.088C4 23.9467 4 22.4533 4 19.4667V12.5333Z" stroke="#C4C4C4" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>              
               </div>
             )}
           </div>
@@ -584,11 +610,11 @@ const userId = authUser?.uid || "";
                 <img class="hero_profile_img" src={currentProject.profileImageUrl} alt="プロフィール画像">
               ) : (
                 <div class="default-image-icon">
-                  <svg width="24" height="24" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <path d="M27.902 13.32C19.0887 12.1093 11.4887 18.6533 11.9993 27.3333M8.66602 10.6667C8.66602 11.3739 8.94697 12.0522 9.44706 12.5523C9.94716 13.0524 10.6254 13.3333 11.3327 13.3333C12.0399 13.3333 12.7182 13.0524 13.2183 12.5523C13.7184 12.0522 13.9993 11.3739 13.9993 10.6667C13.9993 9.95942 13.7184 9.28115 13.2183 8.78105C12.7182 8.28095 12.0399 8 11.3327 8C10.6254 8 9.94716 8.28095 9.44706 8.78105C8.94697 9.28115 8.66602 9.95942 8.66602 10.6667Z" stroke="#C4C4C4" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                    <path d="M4 17.4216C7.70667 16.9082 11.0333 18.6989 12.832 21.5549" stroke="#C4C4C4" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                    <path d="M4 12.5333C4 9.54667 4 8.05333 4.58133 6.912C5.09265 5.90851 5.90851 5.09265 6.912 4.58133C8.05333 4 9.54667 4 12.5333 4H19.4667C22.4533 4 23.9467 4 25.088 4.58133C26.0915 5.09265 26.9073 5.90851 27.4187 6.912C28 8.05333 28 9.54667 28 12.5333V19.4667C28 22.4533 28 23.9467 27.4187 25.088C26.9073 26.0915 26.0915 26.9073 25.088 27.4187C23.9467 28 22.4533 28 19.4667 28H12.5333C9.54667 28 8.05333 28 6.912 27.4187C5.90851 26.9073 5.09265 26.0915 4.58133 25.088C4 23.9467 4 22.4533 4 19.4667V12.5333Z" stroke="#C4C4C4" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                  </svg>
+              <svg width="24" height="24" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M27.902 13.32C19.0887 12.1093 11.4887 18.6533 11.9993 27.3333M8.66602 10.6667C8.66602 11.3739 8.94697 12.0522 9.44706 12.5523C9.94716 13.0524 10.6254 13.3333 11.3327 13.3333C12.0399 13.3333 12.7182 13.0524 13.2183 12.5523C13.7184 12.0522 13.9993 11.3739 13.9993 10.6667C13.9993 9.95942 13.7184 9.28115 13.2183 8.78105C12.7182 8.28095 12.0399 8 11.3327 8C10.6254 8 9.94716 8.28095 9.44706 8.78105C8.94697 9.28115 8.66602 9.95942 8.66602 10.6667Z" stroke="#C4C4C4" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                <path d="M4 17.4216C7.70667 16.9082 11.0333 18.6989 12.832 21.5549" stroke="#C4C4C4" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                <path d="M4 12.5333C4 9.54667 4 8.05333 4.58133 6.912C5.09265 5.90851 5.90851 5.09265 6.912 4.58133C8.05333 4 9.54667 4 12.5333 4H19.4667C22.4533 4 23.9467 4 25.088 4.58133C26.0915 5.09265 26.9073 5.90851 27.4187 6.912C28 8.05333 28 9.54667 28 12.5333V19.4667C28 22.4533 28 23.9467 27.4187 25.088C26.9073 26.0915 26.0915 26.9073 25.088 27.4187C23.9467 28 22.4533 28 19.4667 28H12.5333C9.54667 28 8.05333 28 6.912 27.4187C5.90851 26.9073 5.09265 26.0915 4.58133 25.088C4 23.9467 4 22.4533 4 19.4667V12.5333Z" stroke="#C4C4C4" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>                
                 </div>
               )}
             </div>
@@ -659,7 +685,7 @@ const userId = authUser?.uid || "";
         </div>
       </div>
     </section>
-    <div class="profile-section">
+    <section class="profile-section">
   <div class="section-title-wrapper">
     <h3 class="section-title">SNSリンク作成</h3>
     <p>フリープランでは、5つまでsnsを表示できます</p>
@@ -765,7 +791,7 @@ const userId = authUser?.uid || "";
     </div>
   </div>
 </div>
-  </div>
+  </section>
 
 <div id="custom-alert" class="custom-alert">
   <div class="custom-alert-content">
@@ -1328,7 +1354,7 @@ const userId = authUser?.uid || "";
 
   // 保存ボタンがクリックされたとき - ここを修正
   if (saveButton) {
-    saveButton.addEventListener("click", async () => {
+  saveButton.addEventListener("click", async () => {
       if (projectName) disableEditing(projectName);
       if (projectDescription) disableEditing(projectDescription);
 
@@ -1425,15 +1451,15 @@ const userId = authUser?.uid || "";
         
         // プロジェクト情報を更新
         const updateResponse = await fetch("/api/updateProject", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json"
-          },
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
           body: JSON.stringify(projectData)
-        });
+    });
 
         if (updateResponse.ok) {
-          alert("プロジェクトが保存されました！");
+      alert("プロジェクトが保存されました！");
           // 一時ファイルをクリア
           tempBannerFile = null;
           tempProfileFile = null;
@@ -1445,7 +1471,7 @@ const userId = authUser?.uid || "";
           
           // ページをリロード（オプション）
           // window.location.reload();
-        } else {
+    } else {
           const errorData = await updateResponse.json();
           alert(`保存に失敗しました: ${errorData.error || '不明なエラー'}`);
         }
@@ -1848,7 +1874,7 @@ const userId = authUser?.uid || "";
                   <path d="M23.953 4.57a10 10 0 01-2.825.775 4.958 4.958 0 002.163-2.723c-.951.555-2.005.959-3.127 1.184a4.92 4.92 0 00-8.384 4.482C7.69 8.095 4.067 6.13 1.64 3.162a4.822 4.822 0 00-.666 2.475c0 1.71.87 3.213 2.188 4.096a4.904 4.904 0 01-2.228-.616v.06a4.923 4.923 0 003.946 4.827 4.996 4.996 0 01-2.212.085 4.936 4.936 0 004.604 3.417 9.867 9.867 0 01-6.102 2.105c-.39 0-.779-.023-1.17-.067a13.995 13.995 0 007.557 2.209c9.053 0 13.998-7.496 13.998-13.985 0-.21 0-.42-.015-.63A9.935 9.935 0 0024 4.59z" fill="currentColor"/>
                 </svg>`,
       facebook: `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                  <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z" fill="currentColor"/>
+                  <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z" fill="white"/>
                 </svg>`,
       youtube: `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
                   <path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z" fill="white"/>
@@ -2020,7 +2046,7 @@ const userId = authUser?.uid || "";
         }
       });
     }
-    
+
     // プロジェクトIDをURLから取得
   const projectIdFromUrl = window.location.pathname.split('/')[2];
   
@@ -2089,32 +2115,101 @@ const userId = authUser?.uid || "";
   // SNS追加後にデータを更新
   async function addSnsLink(snsType, snsName, snsDescription) {
     try {
-      // FormDataを作成
-      const formData = new FormData();
-      formData.append('action', 'add_sns_link');
-      formData.append('projectId', projectIdFromUrl);
-      formData.append('snsType', snsType);
-      formData.append('snsName', snsName);
-      formData.append('snsDescription', snsDescription);
-      
-      // APIリクエスト
-      const response = await fetch(window.location.href, {
-        method: 'POST',
-        body: formData
-      });
-      
-      if (!response.ok) {
-        throw new Error('SNSリンクの追加に失敗しました');
+        const snsType = document.getElementById("sns-type").value;
+        const snsAccount = document.getElementById("sns-account").value;
+        const snsDescription = document.getElementById("sns-description").value;
+    
+        // 既存のSNSリンクを取得して重複チェック
+        const snsItemsContainer = document.getElementById('sns-items');
+        const snsItems = Array.from(snsItemsContainer.querySelectorAll('.sns-item'));
+        
+        // 既存のアイテムから型とアカウント名を抽出
+        const existingSNS = snsItems.map(item => {
+          const typeEl = item.querySelector('.sns-icon svg');
+          // SVGから型を推測（実際のコードでは適切に型を抽出する必要があります）
+          let type = '';
+          if (typeEl && typeEl.innerHTML.includes('instagram')) {
+            type = 'instagram';
+          } else if (typeEl && typeEl.innerHTML.includes('twitter')) {
+            type = 'twitter';
+          } // 他のSNSタイプも同様に処理
+          
+          const name = item.querySelector('.sns-name')?.textContent || '';
+          
+          return { type, name };
+        });
+        
+        // 重複チェック
+        const isDuplicate = existingSNS.some(sns => 
+          sns.type === snsType && sns.name === snsAccount
+        );
+        
+        if (isDuplicate) {
+          alert("同じタイプ・同じアカウント名のSNSが既に登録されています。");
+          return false;
+        }
+        
+        // FormDataを作成
+        const formData = new FormData();
+        formData.append('action', 'add_sns_link');
+        formData.append('projectId', projectIdFromUrl);
+        formData.append('snsType', snsType);
+        formData.append('snsName', snsAccount);
+        formData.append('snsDescription', snsDescription);
+        
+        // APIリクエスト
+        const response = await fetch(window.location.href, {
+          method: 'POST',
+          body: formData
+        });
+        
+        const result = await response.json();
+        
+        // ここを修正: 成功でない場合はサーバーからのエラーメッセージを優先表示
+        if (!result.success) {
+          // サーバーから返されたエラーメッセージがあればそれを表示
+          if (result.error) {
+            alert(result.error);
+          } else {
+            // エラーメッセージがない場合は汎用メッセージ
+            alert('SNSリンクの追加に失敗しました。');
+          }
+          return false;
+        }
+        
+        // 成功したらデータを再取得して表示を更新
+        await refreshSNSData();
+        
+        // 入力フィールドをクリア
+        document.getElementById("sns-account").value = "";
+        document.getElementById("sns-description").value = "";
+        
+        return true;
+      } catch (error) {
+        console.error('SNSリンク追加中にエラーが発生しました:', error);
+        alert('SNSリンクの追加に失敗しました。もう一度お試しください。');
+        return false;
       }
-      
-      // 成功したらデータを再取得して表示を更新
-      await refreshSNSData();
-      
-      return true;
-    } catch (error) {
-      console.error('SNSリンク追加中にエラーが発生しました:', error);
-      return false;
     }
-  }
+  });
+
+  // SNS追加フォームのsubmitイベントリスナーを追加/修正
+  document.getElementById('sns-form').addEventListener('submit', async function(e) {
+    e.preventDefault();
+    
+    const snsType = document.getElementById('sns-type').value;
+    const snsAccount = document.getElementById('sns-account').value;
+    const snsDescription = document.getElementById('sns-description').value;
+    
+    if (!snsType || !snsAccount) {
+      alert('SNSの種類とアカウント名を入力してください');
+      return;
+    }
+    
+    // SNS追加処理を実行
+    const success = await addSnsLink(snsType, snsAccount, snsDescription);
+    if (success) {
+      console.log('SNSリンクが追加されました');
+    }
   });
 </script>

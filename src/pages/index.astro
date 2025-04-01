@@ -81,10 +81,12 @@ if (method === "POST") {
       } else {
         // 成功 → Cookie設定 → /[userId] にリダイレクト
         const userId = data.localId; // FirebaseのUID
+        
+        // トークンの有効期間を30日間(2592000秒)に延長
         return new Response(null, {
           status: 303,
           headers: {
-            "Set-Cookie": `token=${data.idToken}; Path=/; HttpOnly`,
+            "Set-Cookie": `token=${data.idToken}; Path=/; Max-Age=2592000; SameSite=Lax; Secure;`,
             Location: `/${userId}`,
           },
         });
@@ -439,6 +441,41 @@ const accountName = authUser ? "ログアウト" : "ログイン";
         localStorage.setItem("formMode", "login");
         showLogin();
       });
+    }
+  });
+
+  // ログインリダイレクト後、クライアントサイドのFirebase認証状態を更新
+  document.addEventListener('DOMContentLoaded', async () => {
+    try {
+      // URLからログイン後のリダイレクトかを判定
+      const urlParams = new URLSearchParams(window.location.search);
+      const justLoggedIn = urlParams.get('loggedIn') === 'true';
+      
+      if (justLoggedIn && typeof firebase !== 'undefined' && firebase.auth) {
+        console.log('ログイン後のリダイレクトを検出。Firebase認証状態を更新します...');
+        
+        // Cookieからトークンを取得
+        const getCookie = (name) => {
+          const value = `; ${document.cookie}`;
+          const parts = value.split(`; ${name}=`);
+          if (parts.length === 2) return parts.pop().split(';').shift();
+          return null;
+        };
+        
+        const token = getCookie('token');
+        if (token) {
+          // トークンでFirebaseにサインイン
+          await firebase.auth().signInWithCustomToken(token)
+            .then(() => {
+              console.log('クライアントサイドのFirebase認証状態を更新しました');
+            })
+            .catch((error) => {
+              console.error('クライアントサイドのFirebase認証更新に失敗:', error);
+            });
+        }
+      }
+    } catch (error) {
+      console.error('クライアントサイド認証状態更新中にエラー:', error);
     }
   });
 </script>
