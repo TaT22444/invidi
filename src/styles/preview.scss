@@ -31,6 +31,9 @@
   }
 
   &_header{
+    position: sticky;
+    top: 16px;
+    left: 0;
     display: flex;
     justify-content: space-between;
     align-items: center;
@@ -39,6 +42,7 @@
     border-radius: var(--border-radius-m);
     background-color: var(--sub-bg-color);
     border: 1px solid var(--main-border-color);
+    z-index: 999;
 
     &_title-wrapper{
       display: flex;
@@ -205,25 +209,6 @@
   }
 }
 
-.view-more{
-  margin-top: 32px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-
-  &_btn{
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 4px;
-    color: var(--main-font-color);
-    font-size: var(--font-size-xs);
-    border: 1px solid var(--main-border-color);
-    padding: 12px 16px;
-    border-radius: var(--border-radius-m);
-  }
-}
-
 .notice_list{
   margin-top: 24px;
   width: 100%;
@@ -271,9 +256,9 @@
   
   &_list{
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-    row-gap: 24px;
-    column-gap: 16px;
+    grid-template-columns: repeat(auto-fill, minmax(240px, auto));
+    row-gap: 32px;
+    column-gap: 24px;
     margin-top: 24px;
   }
 
@@ -830,7 +815,68 @@
   }
 }
 
+.empty{
+  width: 100%;
+  max-width: 320px;
+  background-color: var(--sub-bg-color);
+  padding: 16px;
+  border-radius: var(--border-radius-m);
+  border: 1px solid var(--main-border-color);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  &_label{
+    font-size: var(--font-size-xs);
+    color: var(--sub-font-color);
+  }
+}
+
 .subject_label{
   font-size: var(--font-size-xs);
   color: var(--main-font-color);
+}
+
+.view-actions {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 16px; // ボタン間の間隔
+  margin-top: 32px;
+}
+
+.view-less {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  &_btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    color: var(--main-font-color);
+    font-size: var(--font-size-xs);
+    border: 1px solid var(--main-border-color);
+    padding: 12px 16px;
+    border-radius: var(--border-radius-m);
+  }
+}
+
+.view-more{
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  &_btn{
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    color: var(--main-font-color);
+    font-size: var(--font-size-xs);
+    border: 1px solid var(--main-border-color);
+    padding: 12px 16px;
+    border-radius: var(--border-radius-m);
+  }
 }

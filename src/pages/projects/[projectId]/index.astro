@@ -4,6 +4,7 @@ export const prerender = false;
 // ◆ Layout およびチャートコンポーネントをインポート
 import Layout from "../../../layouts/Layout.astro";
 import MyLineChart from "../../../components/MyLineChart.jsx";
+import ProjectNav from "../../../components/ProjectNav.astro";
 
 // ◆ Firebase Admin SDK のインポート
 import admin from "firebase-admin";
@@ -178,66 +179,7 @@ const userId = authUser?.uid || "";
     </p>
   </div>
 
-  <nav class="nav">
-    <button class="nav_btn">
-      <svg
-        width="16"
-        height="16"
-        viewBox="0 0 16 16"
-        fill="none"
-        xmlns="http://www.w3.org/2000/svg"
-      >
-        <g clip-path="url(#clip0_623_115)">
-          <path
-            fill-rule="evenodd"
-            clip-rule="evenodd"
-            d="M10.4712 7.52879C10.5962 7.65381 10.6664 7.82334 10.6664 8.00012C10.6664 8.1769 10.5962 8.34644 10.4712 8.47145L6.6999 12.2428C6.63841 12.3065 6.56484 12.3572 6.48351 12.3922C6.40217 12.4271 6.31469 12.4455 6.22617 12.4463C6.13765 12.4471 6.04986 12.4302 5.96793 12.3967C5.886 12.3631 5.81157 12.3136 5.74897 12.251C5.68638 12.1885 5.63688 12.114 5.60336 12.0321C5.56983 11.9502 5.55297 11.8624 5.55374 11.7739C5.55451 11.6853 5.5729 11.5979 5.60784 11.5165C5.64277 11.4352 5.69356 11.3616 5.75724 11.3001L9.05724 8.00012L5.75724 4.70012C5.6358 4.57439 5.5686 4.40598 5.57012 4.23119C5.57164 4.05639 5.64175 3.88918 5.76536 3.76557C5.88896 3.64197 6.05617 3.57186 6.23097 3.57034C6.40577 3.56882 6.57417 3.63601 6.6999 3.75745L10.4712 7.52879Z"
-            fill="white"
-          />
-        </g>
-        <defs>
-          <clipPath id="clip0_623_115">
-            <rect width="16" height="16" fill="white" />
-          </clipPath>
-        </defs>
-      </svg>
-    </button>
-    <ul class="nav_list">
-      <li class="nav_item">
-        <a href=`/projects/${projectId}` class="nav_link active" id="switch-btn"
-          >サマリー</a
-        >
-      </li>
-      <li class="nav_item">
-        <a href=`/projects/${projectId}/profile` class="nav_link" id="switch-btn"
-          >プロフィール</a
-        >
-      </li>
-      <li class="nav_item">
-        <a href=`/projects/${projectId}/form` class="nav_link" id="switch-btn"
-          >フォーム</a
-        >
-      </li>
-      <li class="nav_item">
-        <a href=`/projects/${projectId}/cms` class="nav_link" id="switch-btn">CMS</a>
-      </li>
-      <li class="nav_item">
-        <a href=`/projects/${projectId}/analitics` class="nav_link" id="switch-btn"
-          >アナリティクス</a
-        >
-      </li>
-      <li class="nav_item">
-        <a href=`/projects/${projectId}/preview` class="nav_link" id="switch-btn"
-          >プレビュー</a
-        >
-      </li>
-      <li class="nav_item">
-        <a href=`/projects/${projectId}/profile` class="nav_link" id="switch-btn"
-          >プレビュー</a
-        >
-      </li>
-    </ul>
-  </nav>
+  <ProjectNav projectId={projectId} activeTab="summary" />
 
   <div class="container" id="switch">
     <section class="box">
@@ -246,9 +188,7 @@ const userId = authUser?.uid || "";
           <div class="prof_img"></div>
           <div class="prof_title-wrapper">
             <h3 class="prof_title">{currentProject?.name}</h3>
-            <a href="/" class="site_link"
-              >https://example-site/{currentProject?.name}</a
-            >
+            <a href="/" class="site_link">https://example-site/{currentProject?.name}</a>
           </div>
           <div class="prof_wrapper">
             <div class="prof_item">
@@ -412,80 +352,6 @@ const userId = authUser?.uid || "";
 
       >a{
         color: var(--main-font-color);
-      }
-    }
-  }
-
-  .nav{
-    position: relative;
-    margin-top: 16px;
-    width: 100%;
-    overflow: hidden;
-    border-radius: var(--border-radius-m);
-    background-color: var(--sub-bg-color);
-    border: 1px solid var(--main-border-color);
-
-    &_btn{
-      position: absolute;
-      right: 0;
-      height: 100%;
-      padding: 0 8px;
-      background-color: var(--sub-bg-color);
-      border-left: 1px solid var(--main-border-color);
-      z-index: 10;
-    }
-
-    &_list{
-      width: 100%;
-      display: flex;
-      flex-wrap: nowrap;
-      gap: 8px;
-      align-items: center;
-      padding-inline: 24px;
-      overflow-x: auto;
-    }
-
-    &_item{
-
-      >.active{
-        color: var(--main-font-color);
-        border-bottom: 1px solid var(--accent-bg-color);
-      }
-    }
-
-    &_link{
-      position: relative;
-      padding: 16px 40px;
-      text-wrap: nowrap;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      color: var(--sub-font-color);
-      font-size: var(--font-size-xs);
-      font-weight: 400;
-      transition: all .2s;
-
-      &:hover{
-        color: var(--main-font-color);
-        transition: all .2s;
-
-        &::after{
-          content: "";
-          position: absolute;
-          bottom: 0;
-          height: 1px;
-          background-color: var(--accent-bg-color);
-          animation: nav_border .2s forwards;
-
-          @keyframes nav_border {
-            0%{
-              width: 0;
-            }
-            100%{
-              width: 100%;
-            }
-          }
-        }
       }
     }
   }

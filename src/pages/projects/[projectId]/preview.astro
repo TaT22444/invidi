@@ -2,6 +2,7 @@
 export const prerender = false;
 import Layout from '../../../layouts/Layout.astro';
 import '../../../styles/preview.scss';
+import ProjectNav from "../../../components/ProjectNav.astro"; // この行を追加
 
 import admin from "firebase-admin";
 // Firebase Admin SDK の初期化（初回のみ実施）
@@ -149,347 +150,6 @@ if (method === "POST") {
         Location: "/",
       },
     });
-  } else if (action === "create_project") {
-    // 新しいプロジェクトの作成処理
-    if (!authUser) {
-      postError = "ログインしてください";
-    } else {
-      const projectName = formData.get("projectName")?.toString() || "";
-      const projectDescription = formData.get("projectDescription")?.toString() || "";
-      // 初期値としてフォロワー数 0、現在のページ 0、最大ページ 3 を設定
-      const newProject = {
-        name: projectName,
-        description: projectDescription,
-        followers: 0,
-        currentPages: 0,
-        maxPages: 3,
-        createdAt: new Date()
-      };
-      const userRef = db.collection("users").doc(authUser.uid);
-      const userSnap = await userRef.get();
-      if (userSnap.exists) {
-        const currentProjects = userSnap.data().projects || [];
-        currentProjects.push(newProject);
-        await userRef.update({ projects: currentProjects });
-        return new Response(null, {
-          status: 303,
-          headers: { Location: "/" },
-        });
-      } else {
-        postError = "ユーザーデータが見つかりません";
-      }
-    }
-  } else if (action === "update_project_banner") {
-    const bannerImage = formData.get("bannerImage");
-    const projectIdFromForm = formData.get("projectId")?.toString();
-    
-    if (bannerImage && bannerImage instanceof File && projectIdFromForm) {
-      try {
-        // バケット名を明示的に指定
-        const bucket = process.env.FIREBASE_STORAGE_BUCKET || "test-87192.firebasestorage.app";
-        const storageRef = admin.storage().bucket(bucket);
-        
-        const fileRef = storageRef.file(`projects/${projectIdFromForm}/banner/${Date.now()}_${bannerImage.name}`);
-        
-        // 残りのコードはそのまま
-        const buffer = Buffer.from(await bannerImage.arrayBuffer());
-        
-        await fileRef.save(buffer, {
-          metadata: {
-            contentType: bannerImage.type
-          }
-        });
-        
-        // 公開URLを取得
-        const [url] = await fileRef.getSignedUrl({
-          action: "read",
-          expires: "03-01-2500"
-        });
-        
-        // Firestoreにバナー画像URLを保存
-        const projectRef = db.collection("projects").doc(projectIdFromForm);
-        await projectRef.update({
-          bannerUrl: url
-        });
-        
-        // ユーザーのprojects配列内の該当プロジェクトも更新
-        if (userData && userData.projects) {
-          const updatedProjects = userData.projects.map((p) => {
-            if (p.id === projectIdFromForm) {
-              return { ...p, bannerUrl: url };
-            }
-            return p;
-          });
-          
-          await db.collection("users").doc(authUser.uid).update({
-            projects: updatedProjects
-          });
-        }
-        
-        // 成功レスポンスを返す
-        return new Response(JSON.stringify({
-          success: true,
-          imageUrl: url
-        }), {
-          status: 200,
-          headers: {
-            "Content-Type": "application/json"
-          }
-        });
-      } catch (error) {
-        console.error("バナー画像アップロードエラー:", error);
-        return new Response(JSON.stringify({
-          success: false,
-          error: "画像のアップロードに失敗しました"
-        }), {
-          status: 500,
-          headers: {
-            "Content-Type": "application/json"
-          }
-        });
-      }
-    }
-  } else if (action === "update_project_profile") {
-    const profileImage = formData.get("profileImage");
-    const projectIdFromForm = formData.get("projectId")?.toString();
-    
-    if (profileImage && profileImage instanceof File && projectIdFromForm) {
-      try {
-        // バケット名を明示的に指定
-        const bucket = process.env.FIREBASE_STORAGE_BUCKET || "test-87192.firebasestorage.app";
-        const storageRef = admin.storage().bucket(bucket);
-        
-        const fileRef = storageRef.file(`projects/${projectIdFromForm}/profile/${Date.now()}_${profileImage.name}`);
-        
-        // 残りのコードはそのまま
-        const buffer = Buffer.from(await profileImage.arrayBuffer());
-        
-        await fileRef.save(buffer, {
-          metadata: {
-            contentType: profileImage.type
-          }
-        });
-        
-        // 公開URLを取得
-        const [url] = await fileRef.getSignedUrl({
-          action: "read",
-          expires: "03-01-2500"
-        });
-        
-        // Firestoreにプロフィール画像URLを保存
-        const projectRef = db.collection("projects").doc(projectIdFromForm);
-        await projectRef.update({
-          profileImageUrl: url
-        });
-        
-        // ユーザーのprojects配列内の該当プロジェクトも更新
-        if (userData && userData.projects) {
-          const updatedProjects = userData.projects.map((p) => {
-            if (p.id === projectIdFromForm) {
-              return { ...p, profileImageUrl: url };
-            }
-            return p;
-          });
-          
-          await db.collection("users").doc(authUser.uid).update({
-            projects: updatedProjects
-          });
-        }
-        
-        // 成功レスポンスを返す
-        return new Response(JSON.stringify({
-          success: true,
-          imageUrl: url
-        }), {
-          status: 200,
-          headers: {
-            "Content-Type": "application/json"
-          }
-        });
-      } catch (error) {
-        console.error("プロフィール画像アップロードエラー:", error);
-        return new Response(JSON.stringify({
-          success: false,
-          error: "画像のアップロードに失敗しました"
-        }), {
-          status: 500,
-          headers: {
-            "Content-Type": "application/json"
-          }
-        });
-      }
-    }
-  } else if (action === "update_project_info") {
-    const projectIdFromForm = formData.get("projectId")?.toString();
-    const projectName = formData.get("projectName")?.toString();
-    const projectDescription = formData.get("projectDescription")?.toString();
-    const siteName = formData.get("siteName")?.toString(); // サイト名を追加
-    
-    if (projectIdFromForm) {
-      try {
-        const projectRef = db.collection("projects").doc(projectIdFromForm);
-        
-        // 更新データを準備
-        const updateData = {};
-        if (projectName) updateData.name = projectName;
-        if (projectDescription) updateData.description = projectDescription;
-        if (siteName) updateData.siteName = siteName; // サイト名を追加
-        
-        // Firestoreを更新
-        await projectRef.update(updateData);
-        
-        // ユーザーのprojects配列内の該当プロジェクトも更新
-        if (userData && userData.projects) {
-          const updatedProjects = userData.projects.map((p) => {
-            if (p.id === projectIdFromForm) {
-              return { 
-                ...p, 
-                name: projectName || p.name,
-                description: projectDescription || p.description,
-                siteName: siteName || p.siteName || p.name // サイト名を追加
-              };
-            }
-            return p;
-          });
-          
-          await db.collection("users").doc(authUser.uid).update({
-            projects: updatedProjects
-          });
-        }
-        
-        // 成功レスポンス
-        return new Response(JSON.stringify({ success: true }), {
-          status: 200,
-          headers: { "Content-Type": "application/json" }
-        });
-      } catch (error) {
-        console.error("プロジェクト情報の更新に失敗しました:", error);
-        return new Response(JSON.stringify({ error: "更新に失敗しました" }), {
-          status: 500,
-          headers: { "Content-Type": "application/json" }
-        });
-      }
-    }
-  } else if (action === "add_sns_link") {
-    const projectIdFromForm = formData.get("projectId")?.toString();
-    const snsType = formData.get("snsType")?.toString();
-    const snsName = formData.get("snsName")?.toString();
-    const snsDescription = formData.get("snsDescription")?.toString();
-    
-    if (projectIdFromForm && snsType && snsName) {
-      try {
-        const projectRef = db.collection("projects").doc(projectIdFromForm);
-        const projectSnap = await projectRef.get();
-        
-        if (projectSnap.exists) {
-          const projectData = projectSnap.data();
-          const snsLinks = projectData.snsLinks || [];
-          
-          // 重複チェックを追加
-          const isDuplicate = snsLinks.some(link => 
-            link.type === snsType && link.name === snsName
-          );
-          
-          if (isDuplicate) {
-            // 重複がある場合はエラーレスポンスを返す
-            return new Response(JSON.stringify({ 
-              success: false, 
-              error: "同じタイプ・同じアカウント名のSNSが既に登録されています。" 
-            }), {
-              status: 400,
-              headers: { "Content-Type": "application/json" }
-            });
-          }
-          
-          // 新しいSNSリンクを追加
-          snsLinks.push({
-            type: snsType,
-            name: snsName,
-            description: snsDescription || ""
-          });
-          
-          // Firestoreに保存
-          await projectRef.update({ snsLinks });
-          
-          // 成功レスポンス
-          return new Response(JSON.stringify({ success: true }), {
-            status: 200,
-            headers: { "Content-Type": "application/json" }
-          });
-        }
-      } catch (error) {
-        console.error("SNSリンクの追加に失敗しました:", error);
-        return new Response(JSON.stringify({ error: "SNSリンクの追加に失敗しました" }), {
-          status: 500,
-          headers: { "Content-Type": "application/json" }
-        });
-      }
-    }
-  } else if (action === "delete_sns_link") {
-    const projectIdFromForm = formData.get("projectId")?.toString();
-    const snsIndex = parseInt(formData.get("snsIndex")?.toString() || "-1");
-    
-    if (projectIdFromForm && snsIndex >= 0) {
-      try {
-        const projectRef = db.collection("projects").doc(projectIdFromForm);
-        const projectSnap = await projectRef.get();
-        
-        if (projectSnap.exists) {
-          const projectData = projectSnap.data();
-          const snsLinks = projectData.snsLinks || [];
-          
-          // 指定されたインデックスのSNSリンクを削除
-          if (snsIndex < snsLinks.length) {
-            snsLinks.splice(snsIndex, 1);
-            
-            // Firestoreに保存
-            await projectRef.update({ snsLinks });
-            
-            // 成功レスポンス
-            return new Response(JSON.stringify({ success: true }), {
-              status: 200,
-              headers: { "Content-Type": "application/json" }
-            });
-          }
-        }
-      } catch (error) {
-        console.error("SNSリンクの削除に失敗しました:", error);
-        return new Response(JSON.stringify({ error: "SNSリンクの削除に失敗しました" }), {
-          status: 500,
-          headers: { "Content-Type": "application/json" }
-        });
-      }
-    }
-  } else if (action === "add_sns") {
-    const snsType = formData.get("snsType")?.toString() || "";
-    const snsName = formData.get("snsName")?.toString() || "";
-    const snsDescription = formData.get("snsDescription")?.toString() || "";
-    
-    try {
-      const projectRef = db.collection("projects").doc(projectId);
-      const projectSnap = await projectRef.get();
-      
-      if (projectSnap.exists) {
-        const projectData = projectSnap.data();
-        const snsLinks = projectData?.snsLinks || [];
-        
-        // フリープランで5つ以上のSNSリンクがある場合はエラー
-        if (projectData?.plan === "free" && snsLinks.length >= 5) {
-          return new Response(null, {
-            status: 303,
-            headers: { 
-              Location: `/projects/${projectId}/profile?error=sns_limit_reached` 
-            }
-          });
-        }
-      }
-    } catch (error) {
-      console.error("SNSリンク追加中にエラーが発生しました:", error);
-      return new Response(JSON.stringify({ error: "SNSリンクの追加に失敗しました" }), {
-        status: 500,
-        headers: { "Content-Type": "application/json" }
-      });
-    }
   }
 }
 
@@ -498,10 +158,10 @@ const { projectId } = Astro.params;
 // ユーザーが認証されているか確認
 if (!authUser || !userData) {
   console.error("認証されていないユーザーです");
-  return new Response(null, {
-    status: 303,
-    headers: { Location: "/" },
-  });
+        return new Response(null, {
+          status: 303,
+          headers: { Location: "/" },
+        });
 }
 
 // プロジェクトデータの取得（ユーザーのプロジェクト配列から）
@@ -539,9 +199,149 @@ try {
       }
     }
   }
-} catch (error) {
+      } catch (error) {
   console.error("Firestoreからの追加データ取得に失敗:", error);
   // 追加データの取得に失敗しても、基本的なプロジェクトデータがあるので処理を続行
+}
+
+// お知らせデータを取得
+interface NoticeItem {
+  id: string;
+  title: string;
+  tag: string;
+  createdAt: Date;
+  content: string;
+  status?: string;
+}
+
+let noticeItems: NoticeItem[] = [];
+// 初期値はfalseに設定
+let hasMoreNotices = false; 
+const noticeLimit = 6;
+let noticeOffset = 0;
+
+try {
+  if (projectId) {
+    // コレクション名を'notices'から'notice'に修正
+    const noticeSnapshot = await db.collection("projects").doc(projectId)
+      .collection("notice") // 複数形から単数形に修正
+      .orderBy("createdAt", "desc")
+      .limit(noticeLimit + 1)
+      .get();
+    
+    if (!noticeSnapshot.empty) {
+      console.log(`取得したお知らせ件数: ${noticeSnapshot.docs.length}`); // デバッグ用
+      
+      // すべてのお知らせを取得し、公開状態のみフィルタリング
+      const allNoticeItems = noticeSnapshot.docs.map(doc => {
+        const data = doc.data();
+        return {
+          id: doc.id,
+          title: data.title || "タイトル未設定",
+          tag: data.tag || "お知らせ",
+          // createdAtフィールドが存在しない場合や形式が異なる場合に対応
+          createdAt: data.createdAt?.toDate ? data.createdAt.toDate() : 
+                    (data.createdAt instanceof Date ? data.createdAt : new Date()),
+          content: data.content || data.body || "", // contentまたはbodyフィールドに対応
+          status: data.status || "public" // ステータスフィールドがない場合はpublicとみなす
+        };
+      });
+      
+      // 公開状態のもののみフィルタリング
+      const publicNoticeItems = allNoticeItems.filter(item => 
+        item.status === "public" || item.status === "published"
+      );
+      
+      console.log(`お知らせフィルタリング: 取得総数=${allNoticeItems.length}, 公開済み=${publicNoticeItems.length}`);
+      
+      // limit+1件取得できれば、まだ表示すべきデータがある
+      hasMoreNotices = publicNoticeItems.length > noticeLimit;
+      
+      // 表示用データはnoticeLimit件までに制限
+      noticeItems = hasMoreNotices ? publicNoticeItems.slice(0, noticeLimit) : publicNoticeItems;
+      
+      console.log(`処理後のお知らせ件数: ${noticeItems.length}`); // デバッグ用
+    } else {
+      console.log("お知らせデータが見つかりませんでした");
+      hasMoreNotices = false;
+    }
+  }
+      } catch (error) {
+  console.error("お知らせデータの取得に失敗:", error);
+  hasMoreNotices = false;
+}
+
+// ブログデータを取得
+interface BlogItem {
+  id: string;
+  title: string;
+  tag: string;
+  createdAt: Date;
+  imageUrl: string;
+  content: string;
+  thumbnailUrl?: string;
+  body?: string;
+  status?: string;
+}
+
+let blogItems: BlogItem[] = [];
+// 初期値はfalseに設定（アイテムがある場合のみtrueになる）
+let hasMoreBlogs = false;
+const blogLimit = 6;
+let blogOffset = 0;
+
+try {
+  if (projectId) {
+    // 表示件数+1を取得して、さらに表示すべきデータがあるかを確認する
+    const blogSnapshot = await db.collection("projects").doc(projectId)
+      .collection("blog")
+      .orderBy("createdAt", "desc")
+      .limit(blogLimit + 1) // 1件多く取得
+      .get();
+    
+    if (!blogSnapshot.empty) {
+      // まずすべてのデータを取得
+      const allBlogItems = blogSnapshot.docs.map(doc => {
+        const data = doc.data();
+              return { 
+          id: doc.id,
+          title: data.title || "タイトル未設定",
+          tag: data.tags?.[0] || "ブログ",
+          createdAt: data.createdAt?.toDate() || new Date(),
+          imageUrl: data.thumbnailUrl || "https://placehold.jp/1000x600.png",
+          content: data.body || "",
+          status: data.status || "public"
+        };
+      });
+      
+      // ログを追加して状態を確認
+      console.log(`取得したブログ件数: ${allBlogItems.length}, 公開中: ${allBlogItems.filter(item => item.status === "public").length}`);
+      
+      // statusが"public"のもののみフィルタリング
+      const publicBlogItems = allBlogItems.filter(item => item.status === "public" || item.status === "published");
+      
+      // 公開アイテムが表示件数より多い場合、「さらに表示」ボタンを表示
+      hasMoreBlogs = publicBlogItems.length > blogLimit;
+      
+      // 表示用データはblogLimit件までに制限
+      blogItems = hasMoreBlogs ? publicBlogItems.slice(0, blogLimit) : publicBlogItems;
+      
+      // 最終結果をログに出力
+      console.log(`ブログ表示処理結果: 表示件数=${blogItems.length}, さらに表示=${hasMoreBlogs}`);
+    }
+  }
+      } catch (error) {
+  console.error("ブログデータの取得に失敗:", error);
+  hasMoreBlogs = false; // エラーの場合も明示的にfalseに設定
+}
+
+// 日付をフォーマットする関数
+function formatDate(date: Date): string {
+  return new Intl.DateTimeFormat('ja-JP', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+  }).format(date).replace(/\//g, '/');
 }
 
 const userId = authUser?.uid || "";
@@ -665,12 +465,12 @@ const userId = authUser?.uid || "";
                       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
                         <path d="M22.54 6.42a2.78 2.78 0 0 0-1.94-2C18.88 4 12 4 12 4s-6.88 0-8.6.46a2.78 2.78 0 0 0-1.94 2A29 29 0 0 0 1 11.75a29 29 0 0 0 .46 5.33A2.78 2.78 0 0 0 3.4 19c1.72.46 8.6.46 8.6.46s6.88 0 8.6-.46a2.78 2.78 0 0 0 1.94-2 29 29 0 0 0 .46-5.25 29 29 0 0 0-.46-5.33z" fill="currentColor"/>
                         <polygon points="9.75 15.02 15.5 11.75 9.75 8.48 9.75 15.02" fill="var(--sub-bg-color)"/>
-                      </svg>
+        </svg>          
                     )}
                     {link.type === 'facebook' && (
                       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
                         <path d="M18 2h-3a5 5 0 0 0-5 5v3H7v4h3v8h4v-8h3l1-4h-4V7a1 1 0 0 1 1-1h3z" fill="currentColor" stroke="currentColor" stroke-width="0.5" stroke-linecap="round" stroke-linejoin="round"/>
-                      </svg>
+        </svg>          
                     )}
                   </button>
                 </li>
@@ -683,70 +483,60 @@ const userId = authUser?.uid || "";
         <div class="inner">
           <h3 class="cms-container_title">お知らせ</h3>
           <ul class="notice_list">
-            <li class="notice_item">
-              <div class="notice_item_info">
-                <p>
-                  <span>
-                    お知らせのタグ
-                  </span>
-                  <span class="slash"></span>
-                  <span>投稿日</span>
-                </p>
-                <h4 class="notice_item_title">
-                  タイトル
-                </h4>
-              </div>
-              <div class="notice_item_btns">
-                <button class="notice_item_open">
-                  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <g clip-path="url(#clip0_623_115)">
-                    <path fill-rule="evenodd" clip-rule="evenodd" d="M10.4712 7.52879C10.5962 7.65381 10.6664 7.82334 10.6664 8.00012C10.6664 8.1769 10.5962 8.34644 10.4712 8.47145L6.6999 12.2428C6.63841 12.3065 6.56484 12.3572 6.48351 12.3922C6.40217 12.4271 6.31469 12.4455 6.22617 12.4463C6.13765 12.4471 6.04986 12.4302 5.96793 12.3967C5.886 12.3631 5.81157 12.3136 5.74897 12.251C5.68638 12.1885 5.63688 12.114 5.60336 12.0321C5.56983 11.9502 5.55297 11.8624 5.55374 11.7739C5.55451 11.6853 5.5729 11.5979 5.60784 11.5165C5.64277 11.4352 5.69356 11.3616 5.75724 11.3001L9.05724 8.00012L5.75724 4.70012C5.6358 4.57439 5.5686 4.40598 5.57012 4.23119C5.57164 4.05639 5.64175 3.88918 5.76536 3.76557C5.88896 3.64197 6.05617 3.57186 6.23097 3.57034C6.40577 3.56882 6.57417 3.63601 6.6999 3.75745L10.4712 7.52879Z" fill="white"/>
-                    </g>
-                    <defs>
-                    <clipPath id="clip0_623_115">
-                    <rect width="16" height="16" fill="white"/>
-                    </clipPath>
-                    </defs>
-                  </svg>                
-                </button>
-              </div>
-            </li>
-            <li class="notice_item">
-              <div class="notice_item_info">
-                <p>
-                  <span>
-                    お知らせのタグ
-                  </span>
-                  <span class="slash"></span>
-                  <span>投稿日</span>
-                </p>
-                <h4 class="notice_item_title">
-                  タイトル
-                </h4>
-              </div>
-              <div class="notice_item_btns">
-                <button class="notice_item_open">
-                  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <g clip-path="url(#clip0_623_115)">
-                    <path fill-rule="evenodd" clip-rule="evenodd" d="M10.4712 7.52879C10.5962 7.65381 10.6664 7.82334 10.6664 8.00012C10.6664 8.1769 10.5962 8.34644 10.4712 8.47145L6.6999 12.2428C6.63841 12.3065 6.56484 12.3572 6.48351 12.3922C6.40217 12.4271 6.31469 12.4455 6.22617 12.4463C6.13765 12.4471 6.04986 12.4302 5.96793 12.3967C5.886 12.3631 5.81157 12.3136 5.74897 12.251C5.68638 12.1885 5.63688 12.114 5.60336 12.0321C5.56983 11.9502 5.55297 11.8624 5.55374 11.7739C5.55451 11.6853 5.5729 11.5979 5.60784 11.5165C5.64277 11.4352 5.69356 11.3616 5.75724 11.3001L9.05724 8.00012L5.75724 4.70012C5.6358 4.57439 5.5686 4.40598 5.57012 4.23119C5.57164 4.05639 5.64175 3.88918 5.76536 3.76557C5.88896 3.64197 6.05617 3.57186 6.23097 3.57034C6.40577 3.56882 6.57417 3.63601 6.6999 3.75745L10.4712 7.52879Z" fill="white"/>
-                    </g>
-                    <defs>
-                    <clipPath id="clip0_623_115">
-                    <rect width="16" height="16" fill="white"/>
-                    </clipPath>
-                    </defs>
-                  </svg>                
-                </button>
-              </div>
-            </li>
+            {noticeItems.length > 0 ? (
+              noticeItems.map((notice) => (
+                <li class="notice_item">
+                  <div class="notice_item_info">
+                    <p>
+                      <span>{notice.tag}</span>
+                      <span class="slash"></span>
+                      <span>{formatDate(notice.createdAt)}</span>
+                    </p>
+                    <h4 class="notice_item_title">
+                      {notice.title}
+                    </h4>
+                  </div>
+                  <div class="notice_item_btns">
+                    <button class="notice_item_open" data-notice-id={notice.id}>
+                      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <g clip-path="url(#clip0_623_115)">
+                        <path fill-rule="evenodd" clip-rule="evenodd" d="M10.4712 7.52879C10.5962 7.65381 10.6664 7.82334 10.6664 8.00012C10.6664 8.1769 10.5962 8.34644 10.4712 8.47145L6.6999 12.2428C6.63841 12.3065 6.56484 12.3572 6.48351 12.3922C6.40217 12.4271 6.31469 12.4455 6.22617 12.4463C6.13765 12.4471 6.04986 12.4302 5.96793 12.3967C5.886 12.3631 5.81157 12.3136 5.74897 12.251C5.68638 12.1885 5.63688 12.114 5.60336 12.0321C5.56983 11.9502 5.55297 11.8624 5.55374 11.7739C5.55451 11.6853 5.5729 11.5979 5.60784 11.5165C5.64277 11.4352 5.69356 11.3616 5.75724 11.3001L9.05724 8.00012L5.75724 4.70012C5.6358 4.57439 5.5686 4.40598 5.57012 4.23119C5.57164 4.05639 5.64175 3.88918 5.76536 3.76557C5.88896 3.64197 6.05617 3.57186 6.23097 3.57034C6.40577 3.56882 6.57417 3.63601 6.6999 3.75745L10.4712 7.52879Z" fill="white"/>
+                        </g>
+                        <defs>
+                        <clipPath id="clip0_623_115">
+                        <rect width="16" height="16" fill="white"/>
+                        </clipPath>
+                        </defs>
+                      </svg>        
+                    </button>
+                  </div>
+                </li>
+              ))
+            ) : (
+              <li class="empty">
+                <span class="empty_label">お知らせはありません！</span>
+              </li>
+            )}
           </ul>
-          <div class="view-more">
-            <button class="view-more_btn">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <path d="M18 12.998H13V17.998C13 18.2633 12.8946 18.5176 12.7071 18.7052C12.5196 18.8927 12.2652 18.998 12 18.998C11.7348 18.998 11.4804 18.8927 11.2929 18.7052C11.1054 18.5176 11 18.2633 11 17.998V12.998H6C5.73478 12.998 5.48043 12.8927 5.29289 12.7052C5.10536 12.5176 5 12.2633 5 11.998C5 11.7328 5.10536 11.4785 5.29289 11.2909C5.48043 11.1034 5.73478 10.998 6 10.998H11V5.99805C11 5.73283 11.1054 5.47848 11.2929 5.29094C11.4804 5.1034 11.7348 4.99805 12 4.99805C12.2652 4.99805 12.5196 5.1034 12.7071 5.29094C12.8946 5.47848 13 5.73283 13 5.99805V10.998H18C18.2652 10.998 18.5196 11.1034 18.7071 11.2909C18.8946 11.4785 19 11.7328 19 11.998C19 12.2633 18.8946 12.5176 18.7071 12.7052C18.5196 12.8927 18.2652 12.998 18 12.998Z" fill="white"/>
-              </svg>
-              <p>さらに表示</p>
-            </button>
+          <div class="view-actions">
+            <div class="view-less" style="display: none;">
+              <button class="view-less_btn" id="show-less-notices">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M19 11H5C4.73478 11 4.48043 11.1054 4.29289 11.2929C4.10536 11.4804 4 11.7348 4 12C4 12.2652 4.10536 12.5196 4.29289 12.7071C4.48043 12.8946 4.73478 13 5 13H19C19.2652 13 19.5196 12.8946 19.7071 12.7071C19.8946 12.5196 20 12.2652 20 12C20 11.7348 19.8946 11.4804 19.7071 11.2929C19.5196 11.1054 19.2652 11 19 11Z" fill="white"/>
+                </svg>
+                <p>表示を減らす</p>
+              </button>
+            </div>
+            {noticeItems.length > 0 && hasMoreNotices && (
+              <div class="view-more">
+                <button class="view-more_btn" id="load-more-notices">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M18 12.998H13V17.998C13 18.2633 12.8946 18.5176 12.7071 18.7052C12.5196 18.8927 12.2652 18.998 12 18.998C11.7348 18.998 11.4804 18.8927 11.2929 18.7052C11.1054 18.5176 11 18.2633 11 17.998V12.998H6C5.73478 12.998 5.48043 12.8927 5.29289 12.7052C5.10536 12.5176 5 12.2633 5 11.998C5 11.7328 5.10536 11.4785 5.29289 11.2909C5.48043 11.1034 5.73478 10.998 6 10.998H11V5.99805C11 5.73283 11.1054 5.47848 11.2929 5.29094C11.4804 5.1034 11.7348 4.99805 12 4.99805C12.2652 4.99805 12.5196 5.1034 12.7071 5.29094C12.8946 5.47848 13 5.73283 13 5.99805V10.998H18C18.2652 10.998 18.5196 11.1034 18.7071 11.2909C18.8946 11.4785 19 11.7328 19 11.998C19 12.2633 18.8946 12.5176 18.7071 12.7052C18.5196 12.8927 18.2652 12.998 18 12.998Z" fill="white"/>
+                  </svg>
+                  <p>さらに表示</p>
+                </button>
+              </div>
+            )}
           </div>
         </div>
       </section>
@@ -754,29 +544,48 @@ const userId = authUser?.uid || "";
         <div class="inner">
           <h3 class="cms-container_title">ブログ</h3>
           <ul class="blog_list">
-            <li class="blog_item">
-              <img
-                src="https://placehold.jp/1000x600.png"
-                alt=""
-              />
-              <p>
-                <span>
-                ブログのタグ
-                </span>
-                <span class="slash"></span>
-                <span>投稿日</span>
-              </p>
-              <h4>タイトル</h4>
-            </li>
-            
+            {blogItems.length > 0 ? (
+              blogItems.map((blog) => (
+                <li class="blog_item" data-blog-id={blog.id}>
+                  <img
+                    src={blog.imageUrl}
+                    alt={blog.title}
+                  />
+                  <p>
+                    <span>
+                    {blog.tag}
+                    </span>
+                    <span class="slash"></span>
+                    <span>{formatDate(blog.createdAt)}</span>
+                  </p>
+                  <h4>{blog.title}</h4>
+                </li>
+              ))
+            ) : (
+              <li class="empty">
+                <span class="empty_label">ブログはありません！</span>
+              </li>
+            )}
           </ul>
-          <div class="view-more">
-            <button class="view-more_btn">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <path d="M18 12.998H13V17.998C13 18.2633 12.8946 18.5176 12.7071 18.7052C12.5196 18.8927 12.2652 18.998 12 18.998C11.7348 18.998 11.4804 18.8927 11.2929 18.7052C11.1054 18.5176 11 18.2633 11 17.998V12.998H6C5.73478 12.998 5.48043 12.8927 5.29289 12.7052C5.10536 12.5176 5 12.2633 5 11.998C5 11.7328 5.10536 11.4785 5.29289 11.2909C5.48043 11.1034 5.73478 10.998 6 10.998H11V5.99805C11 5.73283 11.1054 5.47848 11.2929 5.29094C11.4804 5.1034 11.7348 4.99805 12 4.99805C12.2652 4.99805 12.5196 5.1034 12.7071 5.29094C12.8946 5.47848 13 5.73283 13 5.99805V10.998H18C18.2652 10.998 18.5196 11.1034 18.7071 11.2909C18.8946 11.4785 19 11.7328 19 11.998C19 12.2633 18.8946 12.5176 18.7071 12.7052C18.5196 12.8927 18.2652 12.998 18 12.998Z" fill="white"/>
-              </svg>
-              <p>さらに表示</p>
-            </button>
+          <div class="view-actions">
+            <div class="view-less" style="display: none;">
+              <button class="view-less_btn" id="show-less-blogs">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M19 11H5C4.73478 11 4.48043 11.1054 4.29289 11.2929C4.10536 11.4804 4 11.7348 4 12C4 12.2652 4.10536 12.5196 4.29289 12.7071C4.48043 12.8946 4.73478 13 5 13H19C19.2652 13 19.5196 12.8946 19.7071 12.7071C19.8946 12.5196 20 12.2652 20 12C20 11.7348 19.8946 11.4804 19.7071 11.2929C19.5196 11.1054 19.2652 11 19 11Z" fill="white"/>
+                </svg>
+                <p>表示を減らす</p>
+              </button>
+            </div>
+            {blogItems.length > 0 && (hasMoreBlogs || blogItems.length >= blogLimit) && (
+              <div class="view-more">
+                <button class="view-more_btn" id="load-more-blogs">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M18 12.998H13V17.998C13 18.2633 12.8946 18.5176 12.7071 18.7052C12.5196 18.8927 12.2652 18.998 12 18.998C11.7348 18.998 11.4804 18.8927 11.2929 18.7052C11.1054 18.5176 11 18.2633 11 17.998V12.998H6C5.73478 12.998 5.48043 12.8927 5.29289 12.7052C5.10536 12.5176 5 12.2633 5 11.998C5 11.7328 5.10536 11.4785 5.29289 11.2909C5.48043 11.1034 5.73478 10.998 6 10.998H11V5.99805C11 5.73283 11.1054 5.47848 11.2929 5.29094C11.4804 5.1034 11.7348 4.99805 12 4.99805C12.2652 4.99805 12.5196 5.1034 12.7071 5.29094C12.8946 5.47848 13 5.73283 13 5.99805V10.998H18C18.2652 10.998 18.5196 11.1034 18.7071 11.2909C18.8946 11.4785 19 11.7328 19 11.998C19 12.2633 18.8946 12.5176 18.7071 12.7052C18.5196 12.8927 18.2652 12.998 18 12.998Z" fill="white"/>
+                  </svg>
+                  <p>さらに表示</p>
+                </button>
+              </div>
+            )}
           </div>
         </div>
       </section>
@@ -818,82 +627,630 @@ const userId = authUser?.uid || "";
 </Layout>
 
 <script is:inline>
-  document.addEventListener('DOMContentLoaded', function() {
-    // サイドバー要素を取得して非表示にする
-    const aside = document.getElementById('aside');
-    if (aside) {
-      aside.style.display = 'none';
-    }
+  // スクリプトが既に実行されたかどうかを確認するフラグ
+  if (!window._previewScriptInitialized) {
+    window._previewScriptInitialized = true;
     
-    // メインコンテンツの幅を調整
-    const main = document.getElementById('main');
-    if (main) {
-      main.style.width = '100%';
-      main.style.maxWidth = '100%';
-    }
-  });
-
-document.addEventListener('DOMContentLoaded', function() {
-    // サイドバー要素を取得して非表示にする
-    const aside = document.getElementById('aside');
-    if (aside) {
-      aside.style.display = 'none';
-    }
-    
-    // メインコンテンツの幅を調整
-    const main = document.getElementById('main');
-    if (main) {
-      main.style.width = '100%';
-      main.style.maxWidth = '100%';
-    }
-    
-    // 更新ボタンにイベントリスナーを追加
-    const updateButton = document.querySelector('.preview_btn.update');
-    if (updateButton) {
-      updateButton.addEventListener('click', function() {
-        // ページをリロード
-        window.location.reload();
-      });
-    }
-  });
-
-document.addEventListener('DOMContentLoaded', function() {
-    // サイドバー要素を取得して非表示にする
-    const aside = document.getElementById('aside');
-    if (aside) {
-      aside.style.display = 'none';
-    }
-    
-    // メインコンテンツの幅を調整
-    const main = document.getElementById('main');
-    if (main) {
-      main.style.width = '100%';
-      main.style.maxWidth = '100%';
-    }
-    
-    // 更新ボタンにイベントリスナーを追加
-    const updateButton = document.querySelector('.preview_btn.update');
-    if (updateButton) {
-      updateButton.addEventListener('click', function() {
-        // ページをリロード
-        window.location.reload();
-      });
-    }
-    
-    // 閉じるボタンにイベントリスナーを追加
-    const closeButton = document.querySelector('.preview_btn.close');
-    if (closeButton) {
-      closeButton.addEventListener('click', function() {
-        // ウィンドウを閉じる
-        window.close();
-        
-        // window.close()が動作しない場合のフォールバック
-        // (多くのブラウザではwindow.close()はユーザーが開いたウィンドウのみ閉じることができます)
-        if (window.opener) {
-          // この場合はwindow.openerがあるので、おそらく新しいタブで開かれている
+    document.addEventListener('DOMContentLoaded', function() {
+      console.log('Preview script initializing...');
+      
+      // サイドバー要素を取得して非表示にする
+      const aside = document.getElementById('aside');
+      if (aside) {
+        aside.style.display = 'none';
+      }
+      
+      // メインコンテンツの幅を調整
+      const main = document.getElementById('main');
+      if (main) {
+        main.style.width = '100%';
+        main.style.maxWidth = '100%';
+      }
+      
+      // 更新ボタンにイベントリスナーを追加
+      const updateButton = document.querySelector('.preview_btn.update');
+      if (updateButton) {
+        updateButton.addEventListener('click', function() {
+          // ページをリロード
+          window.location.reload();
+        });
+      }
+      
+      // 閉じるボタンにイベントリスナーを追加
+      const closeButton = document.querySelector('.preview_btn.close');
+      if (closeButton) {
+        closeButton.addEventListener('click', function() {
+          // ウィンドウを閉じる
           window.close();
+          
+          // window.close()が動作しない場合のフォールバック
+          if (window.opener) {
+            window.close();
+          } else {
+            alert('ブラウザの制限により自動的に閉じることができません。このタブを手動で閉じてください。');
+          }
+        });
+      }
+      
+      // お知らせアイテムのクリックイベント
+      const setupNoticeItemEvents = (item) => {
+        const openButton = item.querySelector('.notice_item_open');
+        if (openButton) {
+          openButton.addEventListener('click', function() {
+            const noticeId = this.getAttribute('data-notice-id');
+            if (noticeId) {
+              // お知らせの詳細を表示する処理を実装
+              console.log('お知らせID:', noticeId);
+              alert('お知らせの詳細ページは準備中です。\nお知らせID: ' + noticeId);
+            }
+          });
         }
+      };
+      
+      document.querySelectorAll('.notice_item').forEach(setupNoticeItemEvents);
+      
+      // ブログ記事のクリックイベント
+      const setupBlogItemEvents = (item) => {
+        item.addEventListener('click', function() {
+          const blogId = this.getAttribute('data-blog-id');
+          if (blogId) {
+            // ブログ記事の詳細ページへ遷移
+            console.log('ブログID:', blogId);
+            alert('ブログ記事の詳細ページは準備中です。\nブログID: ' + blogId);
+          }
+        });
+      };
+      
+      document.querySelectorAll('.blog_item').forEach(setupBlogItemEvents);
+      
+      // 日付フォーマット関数
+      function formatDate(date) {
+        return new Intl.DateTimeFormat('ja-JP', {
+          year: 'numeric',
+          month: '2-digit',
+          day: '2-digit'
+        }).format(date).replace(/\//g, '/');
+      }
+      
+      // お知らせとブログに関する変数の初期化部分の修正
+      let noticeDisplayed = document.querySelectorAll('.notice_list .notice_item').length || 0;
+      let noticeOffset = noticeDisplayed; // 初期表示されている件数をオフセットに設定
+      let previousNoticeItems = []; // 以前のアイテムを保存する配列
+
+      let blogDisplayed = document.querySelectorAll('.blog_list .blog_item').length || 0;
+      let blogOffset = blogDisplayed; // 初期表示されている件数をオフセットに設定
+      let previousBlogItems = []; // 以前のアイテムを保存する配列
+      
+      // 初期状態を反映するために、サーバーサイドの値を取得
+      const serverHasMoreNotices = document.getElementById('load-more-notices')?.parentElement ? true : false;
+      const serverHasMoreBlogs = document.getElementById('load-more-blogs')?.parentElement ? true : false;
+
+      // アイテムが存在するかを確認
+      const hasNoticeItems = document.querySelector('.notice_list .notice_item') !== null;
+      const hasBlogItems = document.querySelector('.blog_list .blog_item') !== null;
+
+      // アイテムが存在し、サーバーがmore=trueの場合のみtrueに設定
+      hasMoreNotices = hasNoticeItems && serverHasMoreNotices;
+      hasMoreBlogs = hasBlogItems && (serverHasMoreBlogs || blogDisplayed >= 6); // 6はblogLimitと同じ値
+
+      // ブログの「さらに表示」ボタンを強制的に表示（デバッグ用、問題が解決したら削除）
+      const loadMoreBlogsContainer = document.getElementById('load-more-blogs')?.parentElement;
+      if (hasBlogItems && !loadMoreBlogsContainer) {
+        console.log('ブログの「さらに表示」ボタンが見つかりません。強制的に表示します。');
+        
+        // ブログセクションのview-actionsを取得
+        const blogViewActions = document.querySelector('.blog_list').closest('.inner').querySelector('.view-actions');
+        
+        // 「さらに表示」ボタンを追加
+        if (blogViewActions && !blogViewActions.querySelector('.view-more')) {
+          const viewMoreDiv = document.createElement('div');
+          viewMoreDiv.className = 'view-more';
+          viewMoreDiv.innerHTML = `
+            <button class="view-more_btn" id="load-more-blogs">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M18 12.998H13V17.998C13 18.2633 12.8946 18.5176 12.7071 18.7052C12.5196 18.8927 12.2652 18.998 12 18.998C11.7348 18.998 11.4804 18.8927 11.2929 18.7052C11.1054 18.5176 11 18.2633 11 17.998V12.998H6C5.73478 12.998 5.48043 12.8927 5.29289 12.7052C5.10536 12.5176 5 12.2633 5 11.998C5 11.7328 5.10536 11.4785 5.29289 11.2909C5.48043 11.1034 5.73478 10.998 6 10.998H11V5.99805C11 5.73283 11.1054 5.47848 11.2929 5.29094C11.4804 5.1034 11.7348 4.99805 12 4.99805C12.2652 4.99805 12.5196 5.1034 12.7071 5.29094C12.8946 5.47848 13 5.73283 13 5.99805V10.998H18C18.2652 10.998 18.5196 11.1034 18.7071 11.2909C18.8946 11.4785 19 11.7328 19 11.998C19 12.2633 18.8946 12.5176 18.7071 12.7052C18.5196 12.8927 18.2652 12.998 18 12.998Z" fill="white"/>
+              </svg>
+              <p>さらに表示</p>
+            </button>
+          `;
+          blogViewActions.appendChild(viewMoreDiv);
+          
+          // 新しく追加した「さらに表示」ボタンにイベントリスナーを設定
+          const newLoadMoreBlogs = document.getElementById('load-more-blogs');
+          if (newLoadMoreBlogs) {
+            // 以下のイベントリスナー設定を行う（既存のコードと同様）
+            // ここでイベントリスナーを再設定
+            newLoadMoreBlogs.addEventListener('click', function() {
+              // 既存のクリックイベントハンドラーのコードをここに挿入
+              console.log('動的に追加された「さらに表示」ボタンがクリックされました');
+              // ... 残りのイベントハンドラーコード
+            });
+          }
+        }
+      }
+
+      // まず初期状態をログ出力
+      console.log('初期状態:', {
+        noticeItems: document.querySelectorAll('.notice_list .notice_item').length,
+        noticeOffset,
+        blogItems: document.querySelectorAll('.blog_list .blog_item').length,
+        blogOffset,
+        hasMoreNotices,
+        hasMoreBlogs,
+        loadMoreBlogsExists: !!document.getElementById('load-more-blogs')
       });
-    }
-  });
+      
+      // 「表示を減らす」ボタンのイベント - お知らせ
+      const loadMoreNotices = document.getElementById('load-more-notices');
+      const showLessNotices = document.getElementById('show-less-notices');
+      
+      if (loadMoreNotices) {
+        loadMoreNotices.addEventListener('click', function() {
+          console.log('さらに表示クリック前 - お知らせ:', {
+            noticeDisplayed,
+            noticeOffset,
+            previousNoticesLength: previousNoticeItems.length
+          });
+          
+          // クリック時にボタンを無効化して連打を防止
+          this.disabled = true;
+          this.style.opacity = '0.5';
+          
+          const projectId = window.location.pathname.split('/')[2]; // URLからprojectIdを取得
+          
+          console.log('お知らせ追加取得開始:', { projectId, offset: noticeOffset });
+          
+          // リクエストデータの準備
+          const data = {
+            projectId: projectId,
+            offset: noticeOffset, // 現在のオフセット（表示されている件数）
+            limit: 6
+          };
+          
+          // Fetch APIを使ってPOSTリクエストを送信
+          fetch('/api/notices', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(data)
+          })
+          .then(response => {
+            if (!response.ok) {
+              // エラーレスポンスの詳細を取得して表示
+              return response.text().then(text => {
+                console.error('API エラーの詳細:', text);
+                throw new Error(`APIエラー: ${response.status} - ${text}`);
+              });
+            }
+            return response.json();
+          })
+          .then(data => {
+            console.log('お知らせAPI応答:', data);
+            
+            // ボタンを再度有効化
+            loadMoreNotices.disabled = false;
+            loadMoreNotices.style.opacity = '1';
+            
+            if (data.items && data.items.length > 0) {
+              const noticeList = document.querySelector('.notice_list');
+              
+              // 現在の表示アイテムを保存 (ディープコピーに変更)
+              const currentItems = Array.from(noticeList.querySelectorAll('.notice_item')).map(item => item.cloneNode(true));
+              previousNoticeItems.push(currentItems);
+              
+              // 追加前の表示件数を記録
+              const beforeAddCount = noticeList.querySelectorAll('.notice_item').length;
+              
+              // 新しいアイテムをリストに追加（重複チェック付き）
+              let addedCount = 0;
+              data.items.forEach(notice => {
+                // IDが既に表示中のアイテムと重複していないか確認
+                const isDuplicate = Array.from(noticeList.querySelectorAll('.notice_item_open')).some(
+                  el => el.getAttribute('data-notice-id') === notice.id
+                );
+                
+                if (!isDuplicate) {
+                  const li = document.createElement('li');
+                  li.className = 'notice_item';
+                  li.innerHTML = `
+                    <div class="notice_item_info">
+                      <p>
+                        <span>${notice.tag || 'お知らせ'}</span>
+                        <span class="slash"></span>
+                        <span>${formatDate(new Date(notice.createdAt))}</span>
+                      </p>
+                      <h4 class="notice_item_title">
+                        ${notice.title || 'タイトル未設定'}
+                      </h4>
+                    </div>
+                    <div class="notice_item_btns">
+                       <button class="notice_item_open" data-notice-id="${notice.id}">
+                        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                          <g clip-path="url(#clip0_623_115)">
+                          <path fill-rule="evenodd" clip-rule="evenodd" d="M10.4712 7.52879C10.5962 7.65381 10.6664 7.82334 10.6664 8.00012C10.6664 8.1769 10.5962 8.34644 10.4712 8.47145L6.6999 12.2428C6.63841 12.3065 6.56484 12.3572 6.48351 12.3922C6.40217 12.4271 6.31469 12.4455 6.22617 12.4463C6.13765 12.4471 6.04986 12.4302 5.96793 12.3967C5.886 12.3631 5.81157 12.3136 5.74897 12.251C5.68638 12.1885 5.63688 12.114 5.60336 12.0321C5.56983 11.9502 5.55297 11.8624 5.55374 11.7739C5.55451 11.6853 5.5729 11.5979 5.60784 11.5165C5.64277 11.4352 5.69356 11.3616 5.75724 11.3001L9.05724 8.00012L5.75724 4.70012C5.6358 4.57439 5.5686 4.40598 5.57012 4.23119C5.57164 4.05639 5.64175 3.88918 5.76536 3.76557C5.88896 3.64197 6.05617 3.57186 6.23097 3.57034C6.40577 3.56882 6.57417 3.63601 6.6999 3.75745L10.4712 7.52879Z" fill="white"/>
+                          </g>
+                          <defs>
+                          <clipPath id="clip0_623_115">
+                          <rect width="16" height="16" fill="white"/>
+                          </clipPath>
+                          </defs>
+                        </svg>        
+                      </button>
+                    </div>
+                  `;
+                  noticeList.appendChild(li);
+                  
+                  // 新しく追加したアイテムにイベントリスナーを設定
+                  setupNoticeItemEvents(li);
+                  addedCount++;
+                } else {
+                  console.log(`スキップ: お知らせID ${notice.id} は既に表示中`);
+                }
+              });
+              
+              // 実際に追加された件数を確認
+              const afterAddCount = noticeList.querySelectorAll('.notice_item').length;
+              const actuallyAdded = afterAddCount - beforeAddCount;
+              
+              // オフセットと表示件数を更新（実際に追加された件数のみ）
+              noticeOffset += actuallyAdded;
+              noticeDisplayed = afterAddCount;
+              
+              console.log(`お知らせ: ${actuallyAdded}件追加（重複除外前: ${data.items.length}件）`);
+              
+              // hasMoreNotices状態を更新
+              hasMoreNotices = data.hasMore;
+              
+              // 表示/非表示の状態を更新
+              updateViewLessButtonVisibility();
+              
+              // これ以上アイテムがない場合は「さらに表示」ボタンを非表示にする
+              if (!data.hasMore) {
+                loadMoreNotices.parentElement.style.display = 'none';
+              }
+            } else {
+              // これ以上アイテムがない場合
+              loadMoreNotices.parentElement.style.display = 'none';
+            }
+            
+            console.log('さらに表示クリック後 - お知らせ:', {
+              noticeDisplayed,
+              noticeOffset,
+              previousNoticesLength: previousNoticeItems.length,
+              現在表示数: document.querySelectorAll('.notice_list .notice_item').length
+            });
+          })
+          .catch(error => {
+            // エラー時もボタンを再度有効化
+            loadMoreNotices.disabled = false;
+            loadMoreNotices.style.opacity = '1';
+            
+            console.error('お知らせの追加取得に失敗:', error);
+            alert('お知らせの追加取得に失敗しました。\n' + error.message);
+          });
+        });
+      }
+      
+      // 「さらに表示」ボタンのイベント - ブログ
+      const loadMoreBlogs = document.getElementById('load-more-blogs');
+      const showLessBlogs = document.getElementById('show-less-blogs');
+      
+      if (loadMoreBlogs) {
+        loadMoreBlogs.addEventListener('click', function() {
+          console.log('さらに表示クリック前 - ブログ:', {
+            blogDisplayed,
+            blogOffset,
+            previousBlogsLength: previousBlogItems.length
+          });
+          
+          // クリック時にボタンを無効化して連打を防止
+          this.disabled = true;
+          this.style.opacity = '0.5';
+          
+          const projectId = window.location.pathname.split('/')[2]; // URLからprojectIdを取得
+          
+          console.log('ブログ追加取得開始:', { projectId, offset: blogOffset });
+          
+          // リクエストデータの準備
+          const data = {
+            projectId: projectId,
+            offset: blogOffset,
+            limit: 4
+          };
+          
+          // Fetch APIを使ってPOSTリクエストを送信
+          fetch('/api/blogs', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(data)
+          })
+          .then(response => {
+            if (!response.ok) {
+              throw new Error(`APIエラー: ${response.status}`);
+            }
+            return response.json();
+          })
+          .then(data => {
+            console.log('ブログAPI応答詳細:', {
+              取得件数: data.items?.length || 0,
+              hasMore: data.hasMore,
+              totalCount: data.totalCount,
+              IDs: data.items?.map(i => i.id).join(', ')
+            });
+            
+            // ボタンを再度有効化
+            loadMoreBlogs.disabled = false;
+            loadMoreBlogs.style.opacity = '1';
+            
+            if (data.items && data.items.length > 0) {
+              const blogList = document.querySelector('.blog_list');
+              
+              // 現在の表示アイテムを保存 (ディープコピーに変更)
+              const currentItems = Array.from(blogList.querySelectorAll('.blog_item')).map(item => item.cloneNode(true));
+              previousBlogItems.push(currentItems);
+              
+              // 追加前の表示件数を記録
+              const beforeAddCount = blogList.querySelectorAll('.blog_item').length;
+              
+              // 新しいアイテムをリストに追加（重複チェック付き）
+              let addedCount = 0;
+              data.items.forEach(blog => {
+                // IDが既に表示中のアイテムと重複していないか確認
+                const isDuplicate = Array.from(blogList.querySelectorAll('.blog_item')).some(
+                  el => el.getAttribute('data-blog-id') === blog.id
+                );
+                
+                if (!isDuplicate) {
+                  const li = document.createElement('li');
+                  li.className = 'blog_item';
+                  li.setAttribute('data-blog-id', blog.id);
+                  li.innerHTML = `
+                    <img
+                      src="${blog.imageUrl}"
+                      alt="${blog.title}"
+                    />
+                    <p>
+                      <span>
+                      ${blog.tag}
+                      </span>
+                      <span class="slash"></span>
+                      <span>${formatDate(new Date(blog.createdAt))}</span>
+                    </p>
+                    <h4>${blog.title}</h4>
+                  `;
+                  blogList.appendChild(li);
+                  
+                  // 新しく追加したアイテムにイベントリスナーを設定
+                  setupBlogItemEvents(li);
+                  addedCount++;
+                } else {
+                  console.log(`スキップ: ブログID ${blog.id} は既に表示中`);
+                }
+              });
+              
+              // 実際に追加された件数を確認
+              const afterAddCount = blogList.querySelectorAll('.blog_item').length;
+              const actuallyAdded = afterAddCount - beforeAddCount;
+              
+              // オフセットと表示件数を更新（実際に追加された件数のみ）
+              blogOffset += actuallyAdded;
+              blogDisplayed = afterAddCount;
+              
+              console.log(`ブログ: ${actuallyAdded}件追加（重複除外前: ${data.items.length}件）`);
+              
+              // hasMoreBlogs状態を更新
+              hasMoreBlogs = data.hasMore;
+              
+              // 表示/非表示の状態を更新
+              updateViewLessButtonVisibility();
+              
+              // これ以上アイテムがない場合は「さらに表示」ボタンを非表示にする
+              if (!data.hasMore) {
+                loadMoreBlogs.parentElement.style.display = 'none';
+              }
+            } else {
+              // これ以上アイテムがない場合
+              loadMoreBlogs.parentElement.style.display = 'none';
+            }
+            
+            console.log('さらに表示クリック後 - ブログ:', {
+              blogDisplayed,
+              blogOffset,
+              previousBlogsLength: previousBlogItems.length,
+              現在表示数: document.querySelectorAll('.blog_list .blog_item').length
+            });
+          })
+          .catch(error => {
+            // エラー時もボタンを再度有効化
+            loadMoreBlogs.disabled = false;
+            loadMoreBlogs.style.opacity = '1';
+            
+            console.error('ブログの追加取得に失敗:', error);
+            alert('ブログの追加取得に失敗しました。\n' + error.message);
+          });
+        });
+      }
+      
+      // 「表示を減らす」ボタンのイベント - ブログ
+      if (showLessBlogs) {
+        showLessBlogs.addEventListener('click', function() {
+          console.log('表示を減らすクリック前 - ブログ:', {
+            blogDisplayed,
+            blogOffset,
+            previousBlogsLength: previousBlogItems.length,
+            hasMoreBlogs
+          });
+          
+          // クリック時にボタンを無効化して連打を防止
+          this.disabled = true;
+          this.style.opacity = '0.5';
+          
+          // 前回のアイテムがあるか確認
+          if (previousBlogItems.length > 0) {
+            const blogList = document.querySelector('.blog_list');
+            
+            // 現在の表示アイテム数を記録
+            const currentDisplayCount = blogList.querySelectorAll('.blog_item').length;
+            
+            // 修正: 固定で3件削減するロジックに変更
+            // 3件未満の場合は全て削除（その後に前回の状態を復元）
+            const itemsToRemove = Math.min(3, currentDisplayCount);
+            
+            if (itemsToRemove > 0) {
+              // 現在のリストの先頭から3件分を削除
+              for (let i = 0; i < itemsToRemove; i++) {
+                if (blogList.lastChild) {
+                  blogList.removeChild(blogList.lastChild);
+                }
+              }
+              
+              // オフセットと表示件数を更新
+              blogOffset = Math.max(blogOffset - itemsToRemove, 0);
+              blogDisplayed = currentDisplayCount - itemsToRemove;
+              
+              console.log(`ブログ: ${itemsToRemove}件減らしました。現在${blogDisplayed}件表示中`);
+              
+              // 修正: 「さらに表示」ボタンを表示する
+              if (loadMoreBlogs) {
+                loadMoreBlogs.parentElement.style.display = 'block';
+                hasMoreBlogs = true; // まだ表示すべきアイテムがある状態にする
+              }
+              
+              // 表示数が6件以下になった場合は「表示を減らす」ボタンを非表示
+              if (blogDisplayed <= 6) {
+                const viewLessContainer = this.closest('.view-less');
+                if (viewLessContainer) {
+                  viewLessContainer.style.display = 'none';
+                }
+                
+                // previousBlogItemsもクリア
+                previousBlogItems = [];
+              }
+            }
+          }
+          
+          // ボタンを再度有効化
+          this.disabled = false;
+          this.style.opacity = '1';
+          
+          console.log('表示を減らすクリック後 - ブログ:', {
+            blogDisplayed,
+            blogOffset,
+            previousBlogsLength: previousBlogItems.length,
+            hasMoreBlogs,
+            loadMoreBlogsVisible: loadMoreBlogs?.parentElement?.style.display !== 'none',
+            現在表示数: document.querySelectorAll('.blog_list .blog_item').length
+          });
+        });
+      }
+      
+      // ここに「表示を減らす」ボタンの表示/非表示を切り替える関数を追加
+      function updateViewLessButtonVisibility() {
+        try {
+          // お知らせの「表示を減らす」ボタンの表示/非表示を切り替える
+          const viewLessNotices = document.getElementById('show-less-notices');
+          if (viewLessNotices) {
+            const viewLessContainer = viewLessNotices.closest('.view-less');
+            if (viewLessContainer) {
+              viewLessContainer.style.display = previousNoticeItems.length > 0 ? 'block' : 'none';
+              console.log(`お知らせの「表示を減らす」ボタンを${previousNoticeItems.length > 0 ? '表示' : '非表示'}に設定`);
+            }
+          }
+          
+          // ブログの「表示を減らす」ボタンの表示/非表示を切り替える
+          const viewLessBlogs = document.getElementById('show-less-blogs');
+          if (viewLessBlogs) {
+            const viewLessContainer = viewLessBlogs.closest('.view-less');
+            if (viewLessContainer) {
+              viewLessContainer.style.display = previousBlogItems.length > 0 ? 'block' : 'none';
+              console.log(`ブログの「表示を減らす」ボタンを${previousBlogItems.length > 0 ? '表示' : '非表示'}に設定`);
+            }
+          }
+        } catch (error) {
+          console.error('表示/非表示の更新でエラーが発生しました:', error);
+        }
+      }
+      
+      // 「表示を減らす」ボタンのイベント - お知らせ
+      if (showLessNotices) {
+        showLessNotices.addEventListener('click', function() {
+          console.log('表示を減らすクリック前 - お知らせ:', {
+            noticeDisplayed,
+            noticeOffset,
+            previousNoticesLength: previousNoticeItems.length,
+            hasMoreNotices
+          });
+          
+          // クリック時にボタンを無効化して連打を防止
+          this.disabled = true;
+          this.style.opacity = '0.5';
+          
+          // 前回のアイテムがあるか確認
+          if (previousNoticeItems.length > 0) {
+            const noticeList = document.querySelector('.notice_list');
+            
+            // 現在の表示アイテム数を記録
+            const currentDisplayCount = noticeList.querySelectorAll('.notice_item').length;
+            
+            // 現在のリストを一旦空にする
+            while (noticeList.firstChild) {
+              noticeList.removeChild(noticeList.firstChild);
+            }
+            
+            // 前回のアイテムを復元
+            const previousItems = previousNoticeItems.pop();
+            previousItems.forEach(item => {
+              noticeList.appendChild(item);
+              
+              // イベントリスナーを再設定
+              setupNoticeItemEvents(item);
+            });
+            
+            // 前回の表示アイテム数を取得
+            const previousDisplayCount = noticeList.querySelectorAll('.notice_item').length;
+            
+            // 実際に減った件数を計算
+            const reducedCount = currentDisplayCount - previousDisplayCount;
+            
+            // オフセットと表示件数を更新（実際に減った件数に基づく）
+            noticeOffset = Math.max(noticeOffset - reducedCount, previousDisplayCount);
+            noticeDisplayed = previousDisplayCount;
+            
+            console.log(`お知らせ: ${reducedCount}件減らしました。現在${previousDisplayCount}件表示中`);
+            
+            // 修正: 「さらに表示」ボタンを表示する
+            if (loadMoreNotices) {
+              // ここが重要: 元の状態に戻した時は、サーバー側から取得した初期値に基づいて表示/非表示を決定
+              const shouldShowMoreButton = previousNoticeItems.length === 0 ? serverHasMoreNotices : hasMoreNotices;
+              loadMoreNotices.parentElement.style.display = shouldShowMoreButton ? 'block' : 'none';
+              console.log(`お知らせの「さらに表示」ボタンを${shouldShowMoreButton ? '表示' : '非表示'}に設定 (hasMoreNotices=${hasMoreNotices}, serverHasMoreNotices=${serverHasMoreNotices})`);
+            }
+            
+            // 表示/非表示の状態を更新
+            updateViewLessButtonVisibility();
+          }
+          
+          // ボタンを再度有効化
+          this.disabled = false;
+          this.style.opacity = '1';
+          
+          console.log('表示を減らすクリック後 - お知らせ:', {
+            noticeDisplayed,
+            noticeOffset,
+            previousNoticesLength: previousNoticeItems.length,
+            hasMoreNotices,
+            loadMoreNoticesVisible: loadMoreNotices?.parentElement?.style.display !== 'none',
+            現在表示数: document.querySelectorAll('.notice_list .notice_item').length
+          });
+        });
+      }
+      
+      // 初期表示時に「表示を減らす」ボタンの状態を設定
+      updateViewLessButtonVisibility();
+    });
+  }
 </script>
+
