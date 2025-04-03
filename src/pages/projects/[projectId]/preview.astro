@@ -1,0 +1,899 @@
+---
+export const prerender = false;
+import Layout from '../../../layouts/Layout.astro';
+import '../../../styles/preview.scss';
+
+import admin from "firebase-admin";
+// Firebase Admin SDK の初期化（初回のみ実施）
+if (!admin.apps.length) {
+  const serviceAccountStr =
+    process.env.FIREBASE_SERVICE_ACCOUNT || import.meta.env.FIREBASE_SERVICE_ACCOUNT;
+  console.log("Service Account:", serviceAccountStr);
+  const serviceAccount = JSON.parse(serviceAccountStr!);
+  
+  admin.initializeApp({
+    credential: admin.credential.cert(serviceAccount),
+  });
+}
+const adminAuth = admin.auth();
+const db = admin.firestore();
+
+// Cookie ヘッダーから "token" をパースする
+const cookieHeader = Astro.request.headers.get("cookie") || "";
+const cookies = Object.fromEntries(
+  cookieHeader.split("; ").filter(Boolean).map(c => {
+    const [key, ...v] = c.split("=");
+    return [key, v.join("=")];
+  })
+);
+const token = cookies["token"] || "";
+let authUser = null;
+if (token) {
+  try {
+    // 第二引数にfalseを追加して、チェックを緩和
+    authUser = await adminAuth.verifyIdToken(token, false);
+    
+    // 以下のような警告ログを追加するとよい（任意）
+    const tokenIssuedAt = authUser.iat * 1000; // UNIX時間（秒）をミリ秒に変換
+    const currentTime = Date.now();
+    const tokenAge = currentTime - tokenIssuedAt;
+    
+    if (tokenAge > 60 * 60 * 1000) { // 1時間（60分）
+      console.warn("トークンが1時間以上前に発行されましたが、有効として処理します");
+    }
+  } catch (err) {
+    console.error("IDトークンの検証に失敗:", err);
+  }
+}
+
+// Firestore からユーザーの登録情報を取得（ログイン中の場合）
+let userData = null;
+if (authUser) {
+  const userSnap = await db.collection("users").doc(authUser.uid).get();
+  if (userSnap.exists) {
+    userData = userSnap.data();
+  } else {
+    console.error("ユーザーデータが存在しません", authUser.uid);
+  }
+}
+
+// ここで accountName を設定（ログイン中なら displayName、未ログインなら "ログイン"）
+const accountName = authUser && userData && userData.displayName
+  ? userData.displayName
+  : "ログイン";
+
+const projects = userData && userData.projects ? userData.projects : [];
+
+let postError = "";
+let defaultFormMode = "login";
+
+const method = Astro.request.method.toUpperCase();
+if (method === "POST") {
+  const formData = await Astro.request.formData();
+  const action = formData.get("action")?.toString() || "";
+
+  if (action === "login") {
+    // ログイン処理：Firebase Auth REST API を使ってサインイン
+    const email = formData.get("email")?.toString() || "";
+    const password = formData.get("password")?.toString() || "";
+    const apiKey = import.meta.env.PUBLIC_FIREBASE_API_KEY;
+    const res = await fetch(
+      `https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${apiKey}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email,
+          password,
+          returnSecureToken: true,
+        }),
+      }
+    );
+    const data = await res.json();
+    if (data.error) {
+      console.error("[Login Error]", data.error);
+      postError = "ログインに失敗しました";
+    } else {
+      return new Response(null, {
+        status: 303,
+        headers: {
+          "Set-Cookie": `token=${data.idToken}; Path=/; HttpOnly`,
+          Location: "/",
+        },
+      });
+    }
+  } else if (action === "register") {
+    // 新規登録処理：Admin SDK を使ってユーザー作成し、Firestore にユーザーデータを保存
+    const email = formData.get("email")?.toString() || "";
+    const password = formData.get("password")?.toString() || "";
+		const confirmPassword = formData.get("confirmPassword")?.toString() || "";
+    const displayName = formData.get("displayName")?.toString() || "";
+    const bio = formData.get("bio")?.toString() || "";
+    // パスワード一致チェック
+    if (password !== confirmPassword) {
+      postError = "パスワードが一致しません";
+			defaultFormMode = "register";
+    } else {
+      try {
+        const userRecord = await adminAuth.createUser({
+          email,
+          password,
+          displayName,
+        });
+        await db.collection("users").doc(userRecord.uid).set({
+          displayName,
+          email,
+          bio,
+          plan: "free",    // デフォルトはフリープラン
+          projects: []     // 初期はプロジェクト未登録
+        });
+        const customToken = await adminAuth.createCustomToken(userRecord.uid);
+        return new Response(null, {
+          status: 303,
+          headers: {
+            "Set-Cookie": `token=${customToken}; Path=/; HttpOnly`,
+            Location: "/",
+          },
+        });
+      } catch (err) {
+        console.error("[Register Error]", err);
+        postError = "登録に失敗しました";
+      }
+    }
+  } else if (action === "logout") {
+    // ログアウト：Cookie をクリア
+    return new Response(null, {
+      status: 303,
+      headers: {
+        "Set-Cookie": `token=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT`,
+        Location: "/",
+      },
+    });
+  } else if (action === "create_project") {
+    // 新しいプロジェクトの作成処理
+    if (!authUser) {
+      postError = "ログインしてください";
+    } else {
+      const projectName = formData.get("projectName")?.toString() || "";
+      const projectDescription = formData.get("projectDescription")?.toString() || "";
+      // 初期値としてフォロワー数 0、現在のページ 0、最大ページ 3 を設定
+      const newProject = {
+        name: projectName,
+        description: projectDescription,
+        followers: 0,
+        currentPages: 0,
+        maxPages: 3,
+        createdAt: new Date()
+      };
+      const userRef = db.collection("users").doc(authUser.uid);
+      const userSnap = await userRef.get();
+      if (userSnap.exists) {
+        const currentProjects = userSnap.data().projects || [];
+        currentProjects.push(newProject);
+        await userRef.update({ projects: currentProjects });
+        return new Response(null, {
+          status: 303,
+          headers: { Location: "/" },
+        });
+      } else {
+        postError = "ユーザーデータが見つかりません";
+      }
+    }
+  } else if (action === "update_project_banner") {
+    const bannerImage = formData.get("bannerImage");
+    const projectIdFromForm = formData.get("projectId")?.toString();
+    
+    if (bannerImage && bannerImage instanceof File && projectIdFromForm) {
+      try {
+        // バケット名を明示的に指定
+        const bucket = process.env.FIREBASE_STORAGE_BUCKET || "test-87192.firebasestorage.app";
+        const storageRef = admin.storage().bucket(bucket);
+        
+        const fileRef = storageRef.file(`projects/${projectIdFromForm}/banner/${Date.now()}_${bannerImage.name}`);
+        
+        // 残りのコードはそのまま
+        const buffer = Buffer.from(await bannerImage.arrayBuffer());
+        
+        await fileRef.save(buffer, {
+          metadata: {
+            contentType: bannerImage.type
+          }
+        });
+        
+        // 公開URLを取得
+        const [url] = await fileRef.getSignedUrl({
+          action: "read",
+          expires: "03-01-2500"
+        });
+        
+        // Firestoreにバナー画像URLを保存
+        const projectRef = db.collection("projects").doc(projectIdFromForm);
+        await projectRef.update({
+          bannerUrl: url
+        });
+        
+        // ユーザーのprojects配列内の該当プロジェクトも更新
+        if (userData && userData.projects) {
+          const updatedProjects = userData.projects.map((p) => {
+            if (p.id === projectIdFromForm) {
+              return { ...p, bannerUrl: url };
+            }
+            return p;
+          });
+          
+          await db.collection("users").doc(authUser.uid).update({
+            projects: updatedProjects
+          });
+        }
+        
+        // 成功レスポンスを返す
+        return new Response(JSON.stringify({
+          success: true,
+          imageUrl: url
+        }), {
+          status: 200,
+          headers: {
+            "Content-Type": "application/json"
+          }
+        });
+      } catch (error) {
+        console.error("バナー画像アップロードエラー:", error);
+        return new Response(JSON.stringify({
+          success: false,
+          error: "画像のアップロードに失敗しました"
+        }), {
+          status: 500,
+          headers: {
+            "Content-Type": "application/json"
+          }
+        });
+      }
+    }
+  } else if (action === "update_project_profile") {
+    const profileImage = formData.get("profileImage");
+    const projectIdFromForm = formData.get("projectId")?.toString();
+    
+    if (profileImage && profileImage instanceof File && projectIdFromForm) {
+      try {
+        // バケット名を明示的に指定
+        const bucket = process.env.FIREBASE_STORAGE_BUCKET || "test-87192.firebasestorage.app";
+        const storageRef = admin.storage().bucket(bucket);
+        
+        const fileRef = storageRef.file(`projects/${projectIdFromForm}/profile/${Date.now()}_${profileImage.name}`);
+        
+        // 残りのコードはそのまま
+        const buffer = Buffer.from(await profileImage.arrayBuffer());
+        
+        await fileRef.save(buffer, {
+          metadata: {
+            contentType: profileImage.type
+          }
+        });
+        
+        // 公開URLを取得
+        const [url] = await fileRef.getSignedUrl({
+          action: "read",
+          expires: "03-01-2500"
+        });
+        
+        // Firestoreにプロフィール画像URLを保存
+        const projectRef = db.collection("projects").doc(projectIdFromForm);
+        await projectRef.update({
+          profileImageUrl: url
+        });
+        
+        // ユーザーのprojects配列内の該当プロジェクトも更新
+        if (userData && userData.projects) {
+          const updatedProjects = userData.projects.map((p) => {
+            if (p.id === projectIdFromForm) {
+              return { ...p, profileImageUrl: url };
+            }
+            return p;
+          });
+          
+          await db.collection("users").doc(authUser.uid).update({
+            projects: updatedProjects
+          });
+        }
+        
+        // 成功レスポンスを返す
+        return new Response(JSON.stringify({
+          success: true,
+          imageUrl: url
+        }), {
+          status: 200,
+          headers: {
+            "Content-Type": "application/json"
+          }
+        });
+      } catch (error) {
+        console.error("プロフィール画像アップロードエラー:", error);
+        return new Response(JSON.stringify({
+          success: false,
+          error: "画像のアップロードに失敗しました"
+        }), {
+          status: 500,
+          headers: {
+            "Content-Type": "application/json"
+          }
+        });
+      }
+    }
+  } else if (action === "update_project_info") {
+    const projectIdFromForm = formData.get("projectId")?.toString();
+    const projectName = formData.get("projectName")?.toString();
+    const projectDescription = formData.get("projectDescription")?.toString();
+    const siteName = formData.get("siteName")?.toString(); // サイト名を追加
+    
+    if (projectIdFromForm) {
+      try {
+        const projectRef = db.collection("projects").doc(projectIdFromForm);
+        
+        // 更新データを準備
+        const updateData = {};
+        if (projectName) updateData.name = projectName;
+        if (projectDescription) updateData.description = projectDescription;
+        if (siteName) updateData.siteName = siteName; // サイト名を追加
+        
+        // Firestoreを更新
+        await projectRef.update(updateData);
+        
+        // ユーザーのprojects配列内の該当プロジェクトも更新
+        if (userData && userData.projects) {
+          const updatedProjects = userData.projects.map((p) => {
+            if (p.id === projectIdFromForm) {
+              return { 
+                ...p, 
+                name: projectName || p.name,
+                description: projectDescription || p.description,
+                siteName: siteName || p.siteName || p.name // サイト名を追加
+              };
+            }
+            return p;
+          });
+          
+          await db.collection("users").doc(authUser.uid).update({
+            projects: updatedProjects
+          });
+        }
+        
+        // 成功レスポンス
+        return new Response(JSON.stringify({ success: true }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" }
+        });
+      } catch (error) {
+        console.error("プロジェクト情報の更新に失敗しました:", error);
+        return new Response(JSON.stringify({ error: "更新に失敗しました" }), {
+          status: 500,
+          headers: { "Content-Type": "application/json" }
+        });
+      }
+    }
+  } else if (action === "add_sns_link") {
+    const projectIdFromForm = formData.get("projectId")?.toString();
+    const snsType = formData.get("snsType")?.toString();
+    const snsName = formData.get("snsName")?.toString();
+    const snsDescription = formData.get("snsDescription")?.toString();
+    
+    if (projectIdFromForm && snsType && snsName) {
+      try {
+        const projectRef = db.collection("projects").doc(projectIdFromForm);
+        const projectSnap = await projectRef.get();
+        
+        if (projectSnap.exists) {
+          const projectData = projectSnap.data();
+          const snsLinks = projectData.snsLinks || [];
+          
+          // 重複チェックを追加
+          const isDuplicate = snsLinks.some(link => 
+            link.type === snsType && link.name === snsName
+          );
+          
+          if (isDuplicate) {
+            // 重複がある場合はエラーレスポンスを返す
+            return new Response(JSON.stringify({ 
+              success: false, 
+              error: "同じタイプ・同じアカウント名のSNSが既に登録されています。" 
+            }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" }
+            });
+          }
+          
+          // 新しいSNSリンクを追加
+          snsLinks.push({
+            type: snsType,
+            name: snsName,
+            description: snsDescription || ""
+          });
+          
+          // Firestoreに保存
+          await projectRef.update({ snsLinks });
+          
+          // 成功レスポンス
+          return new Response(JSON.stringify({ success: true }), {
+            status: 200,
+            headers: { "Content-Type": "application/json" }
+          });
+        }
+      } catch (error) {
+        console.error("SNSリンクの追加に失敗しました:", error);
+        return new Response(JSON.stringify({ error: "SNSリンクの追加に失敗しました" }), {
+          status: 500,
+          headers: { "Content-Type": "application/json" }
+        });
+      }
+    }
+  } else if (action === "delete_sns_link") {
+    const projectIdFromForm = formData.get("projectId")?.toString();
+    const snsIndex = parseInt(formData.get("snsIndex")?.toString() || "-1");
+    
+    if (projectIdFromForm && snsIndex >= 0) {
+      try {
+        const projectRef = db.collection("projects").doc(projectIdFromForm);
+        const projectSnap = await projectRef.get();
+        
+        if (projectSnap.exists) {
+          const projectData = projectSnap.data();
+          const snsLinks = projectData.snsLinks || [];
+          
+          // 指定されたインデックスのSNSリンクを削除
+          if (snsIndex < snsLinks.length) {
+            snsLinks.splice(snsIndex, 1);
+            
+            // Firestoreに保存
+            await projectRef.update({ snsLinks });
+            
+            // 成功レスポンス
+            return new Response(JSON.stringify({ success: true }), {
+              status: 200,
+              headers: { "Content-Type": "application/json" }
+            });
+          }
+        }
+      } catch (error) {
+        console.error("SNSリンクの削除に失敗しました:", error);
+        return new Response(JSON.stringify({ error: "SNSリンクの削除に失敗しました" }), {
+          status: 500,
+          headers: { "Content-Type": "application/json" }
+        });
+      }
+    }
+  } else if (action === "add_sns") {
+    const snsType = formData.get("snsType")?.toString() || "";
+    const snsName = formData.get("snsName")?.toString() || "";
+    const snsDescription = formData.get("snsDescription")?.toString() || "";
+    
+    try {
+      const projectRef = db.collection("projects").doc(projectId);
+      const projectSnap = await projectRef.get();
+      
+      if (projectSnap.exists) {
+        const projectData = projectSnap.data();
+        const snsLinks = projectData?.snsLinks || [];
+        
+        // フリープランで5つ以上のSNSリンクがある場合はエラー
+        if (projectData?.plan === "free" && snsLinks.length >= 5) {
+          return new Response(null, {
+            status: 303,
+            headers: { 
+              Location: `/projects/${projectId}/profile?error=sns_limit_reached` 
+            }
+          });
+        }
+      }
+    } catch (error) {
+      console.error("SNSリンク追加中にエラーが発生しました:", error);
+      return new Response(JSON.stringify({ error: "SNSリンクの追加に失敗しました" }), {
+        status: 500,
+        headers: { "Content-Type": "application/json" }
+      });
+    }
+  }
+}
+
+const { projectId } = Astro.params;
+
+// ユーザーが認証されているか確認
+if (!authUser || !userData) {
+  console.error("認証されていないユーザーです");
+  return new Response(null, {
+    status: 303,
+    headers: { Location: "/" },
+  });
+}
+
+// プロジェクトデータの取得（ユーザーのプロジェクト配列から）
+let currentProject = null;
+if (userData && userData.projects) {
+  currentProject = userData.projects.find((p: { id: any; }) => p.id === projectId);
+}
+
+// プロジェクトがユーザーに属しているか確認
+if (!currentProject) {
+  console.error("該当のプロジェクトが見つかりません、またはアクセス権限がありません");
+  return new Response(null, {
+    status: 303,
+    headers: { Location: "/" },
+  });
+}
+
+// ここからFirestoreからプロジェクトの追加データを取得
+try {
+  if (projectId) {
+    const projectDoc = await db.collection("projects").doc(projectId).get();
+    if (projectDoc.exists) {
+      const firestoreProject = projectDoc.data();
+      
+      // Firestoreのデータで現在のプロジェクトデータを拡張
+      if (firestoreProject) {
+        // nameフィールドは上書きせず、Firestoreからの他のデータを統合
+        const { name: _, ...firestoreDataWithoutName } = firestoreProject;
+        currentProject = {
+          ...currentProject,
+          ...firestoreDataWithoutName,
+          // siteNameがなければFirestoreから取得、それもなければnameを使用
+          siteName: currentProject.siteName || firestoreProject.siteName || currentProject.name
+        };
+      }
+    }
+  }
+} catch (error) {
+  console.error("Firestoreからの追加データ取得に失敗:", error);
+  // 追加データの取得に失敗しても、基本的なプロジェクトデータがあるので処理を続行
+}
+
+const userId = authUser?.uid || "";
+
+---
+
+<Layout title="App Title" userId={userId} accountName={accountName} projects={userData?.projects ?? []}>
+  <div class="preview">
+    <div class="preview_btns">
+      <button class="preview_btn close">
+        <span>プレビューを閉じる</span>
+      </button>
+      <button class="preview_btn update">
+        <span>更新</span>
+      </button>
+    </div>
+    <div class="preview_inner">
+      <header class="preview_header">
+        <div class="preview_header_title-wrapper">
+          <h1 class="preview_header_title">{currentProject?.name || "プロジェクト名未設定"}</h1>
+          <button class="follow-btn">
+            <span>フォロー</span>
+          </button>
+        </div>
+        <nav class="preview_header_nav">
+          <ul class="preview_header_nav_list">
+            <li class="preview_header_nav_item">
+              <a href=`/projects/${projectId}` class="preview_header_nav_link" id="switch-btn">サマリー</a>
+            </li>
+            <li class="preview_header_nav_item">
+              <a href=`/projects/${projectId}/profile` class="preview_header_nav_link" id="switch-btn">プロフィール</a>
+            </li>
+            <li class="preview_header_nav_item">
+              <a href=`/projects/${projectId}/form` class="preview_header_nav_link" id="switch-btn">フォーム</a>
+            </li>
+            <li class="preview_header_nav_item">
+              <a href=`/projects/${projectId}/cms` class="preview_header_nav_link" id="switch-btn">CMS</a>
+            </li>
+            <li class="preview_header_nav_item">
+              <a href=`/projects/${projectId}/analitics` class="preview_header_nav_link" id="switch-btn">アナリティクス</a>
+            </li>
+          </ul>
+        </nav>
+      </header>
+      <section class="box">
+        <div class="inner">
+          <div class="hero">
+            <div class="hero_banner" id="hero-banner">
+              <input type="file" id="banner-upload" accept="image/*" style="display: none;">
+              {currentProject?.bannerUrl ? (
+                <img class="hero_banner_img" src={currentProject.bannerUrl} alt="バナー画像">
+              ) : (
+                <div class="default-image-icon">
+              <svg width="24" height="24" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M27.902 13.32C19.0887 12.1093 11.4887 18.6533 11.9993 27.3333M8.66602 10.6667C8.66602 11.3739 8.94697 12.0522 9.44706 12.5523C9.94716 13.0524 10.6254 13.3333 11.3327 13.3333C12.0399 13.3333 12.7182 13.0524 13.2183 12.5523C13.7184 12.0522 13.9993 11.3739 13.9993 10.6667C13.9993 9.95942 13.7184 9.28115 13.2183 8.78105C12.7182 8.28095 12.0399 8 11.3327 8C10.6254 8 9.94716 8.28095 9.44706 8.78105C8.94697 9.28115 8.66602 9.95942 8.66602 10.6667Z" stroke="#C4C4C4" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                <path d="M4 17.4216C7.70667 16.9082 11.0333 18.6989 12.832 21.5549" stroke="#C4C4C4" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                <path d="M4 12.5333C4 9.54667 4 8.05333 4.58133 6.912C5.09265 5.90851 5.90851 5.09265 6.912 4.58133C8.05333 4 9.54667 4 12.5333 4H19.4667C22.4533 4 23.9467 4 25.088 4.58133C26.0915 5.09265 26.9073 5.90851 27.4187 6.912C28 8.05333 28 9.54667 28 12.5333V19.4667C28 22.4533 28 23.9467 27.4187 25.088C26.9073 26.0915 26.0915 26.9073 25.088 27.4187C23.9467 28 22.4533 28 19.4667 28H12.5333C9.54667 28 8.05333 28 6.912 27.4187C5.90851 26.9073 5.09265 26.0915 4.58133 25.088C4 23.9467 4 22.4533 4 19.4667V12.5333Z" stroke="#C4C4C4" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>              
+                </div>
+              )}
+            </div>
+            <div class="hero_body">
+              <div class="hero_body_prof">
+                <p class="hero_body_prof_p">
+                  <span>フォロワー</span>
+                  <span class="slash"></span>
+                  <strong class={`strong ${currentProject?.followers > 100 ? 'many-followers' : ''}`}>
+                    {currentProject?.followers || 0}人
+                  </strong>
+                </p>
+                <div class="hero_body_prof_title">
+                  <h2 class="project-name">{currentProject?.siteName || currentProject?.name || "サイト名未設定"}</h2>            
+                </div>
+                <div class="hero_body_prof_desc">
+                  <p id="project-description">{currentProject?.description || "このサイトの紹介文を入力してください。このサイトの紹介文を入力してください。このサイトの紹介文を入力してください。このサイトの紹介文を入力してください。このサイトの紹介文を入力してください。このサイトの紹介文を入力してください。"}</p>         
+                </div>
+              </div>
+              <div class="hero_body_img" id="hero-profile-img">
+                <input type="file" id="profile-upload" accept="image/*" style="display: none;">
+                {currentProject?.profileImageUrl ? (
+                  <img class="hero_profile_img" src={currentProject.profileImageUrl} alt="プロフィール画像">
+                ) : (
+                  <div class="default-image-icon">
+                <svg width="24" height="24" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M27.902 13.32C19.0887 12.1093 11.4887 18.6533 11.9993 27.3333M8.66602 10.6667C8.66602 11.3739 8.94697 12.0522 9.44706 12.5523C9.94716 13.0524 10.6254 13.3333 11.3327 13.3333C12.0399 13.3333 12.7182 13.0524 13.2183 12.5523C13.7184 12.0522 13.9993 11.3739 13.9993 10.6667C13.9993 9.95942 13.7184 9.28115 13.2183 8.78105C12.7182 8.28095 12.0399 8 11.3327 8C10.6254 8 9.94716 8.28095 9.44706 8.78105C8.94697 9.28115 8.66602 9.95942 8.66602 10.6667Z" stroke="#C4C4C4" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                  <path d="M4 17.4216C7.70667 16.9082 11.0333 18.6989 12.832 21.5549" stroke="#C4C4C4" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                  <path d="M4 12.5333C4 9.54667 4 8.05333 4.58133 6.912C5.09265 5.90851 5.90851 5.09265 6.912 4.58133C8.05333 4 9.54667 4 12.5333 4H19.4667C22.4533 4 23.9467 4 25.088 4.58133C26.0915 5.09265 26.9073 5.90851 27.4187 6.912C28 8.05333 28 9.54667 28 12.5333V19.4667C28 22.4533 28 23.9467 27.4187 25.088C26.9073 26.0915 26.0915 26.9073 25.088 27.4187C23.9467 28 22.4533 28 19.4667 28H12.5333C9.54667 28 8.05333 28 6.912 27.4187C5.90851 26.9073 5.09265 26.0915 4.58133 25.088C4 23.9467 4 22.4533 4 19.4667V12.5333Z" stroke="#C4C4C4" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>                
+                  </div>
+                )}
+              </div>
+            </div>
+            <ul class="hero_btn-list">
+              <li class="hero_btn-item">
+                <button class="hero_btn follow-btn" id="follow-button">
+                  <span>フォロー</span>
+                </button>
+              </li>
+              
+              {currentProject?.snsLinks?.map((link: {
+                type: string;
+                name: string;
+                description?: string;
+              }) => (
+                <li class="hero_btn-item" 
+                    data-sns-type={link.type} 
+                    data-sns-name={link.name} 
+                    data-sns-description={link.description || ''}>
+                  <button class="hero_btn">
+                    {link.type === 'instagram' && (
+                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zm0-2.163c-3.259 0-3.667.014-4.947.072-4.358.2-6.78 2.618-6.98 6.98-.059 1.281-.073 1.689-.073 4.948 0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98 1.281.058 1.689.072 4.948.072 3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98-1.281-.059-1.69-.073-4.949-.073zm0 5.838c-3.403 0-6.162 2.759-6.162 6.162s2.759 6.163 6.162 6.163 6.162-2.759 6.162-6.163c0-3.403-2.759-6.162-6.162-6.162zm0 10.162c-2.209 0-4-1.79-4-4 0-2.209 1.791-4 4-4s4 1.791 4 4c0 2.21-1.791 4-4 4zm6.406-11.845c-.796 0-1.441.645-1.441 1.44s.645 1.44 1.441 1.44c.795 0 1.439-.645 1.439-1.44s-.644-1.44-1.439-1.44z" fill="currentColor"/>
+                      </svg>
+                    )}
+                    {link.type === 'twitter' && (
+                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M23 3a10.9 10.9 0 0 1-3.14 1.53 4.48 4.48 0 0 0-7.86 3v1A10.66 10.66 0 0 1 3 4s-4 9 5 13a11.64 11.64 0 0 1-7 2c9 5 20 0 20-11.5a4.5 4.5 0 0 0-.08-.83A7.72 7.72 0 0 0 23 3z" fill="currentColor" stroke="currentColor" stroke-width="0.5" stroke-linecap="round" stroke-linejoin="round"/>
+                      </svg>
+                    )}
+                    {link.type === 'youtube' && (
+                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M22.54 6.42a2.78 2.78 0 0 0-1.94-2C18.88 4 12 4 12 4s-6.88 0-8.6.46a2.78 2.78 0 0 0-1.94 2A29 29 0 0 0 1 11.75a29 29 0 0 0 .46 5.33A2.78 2.78 0 0 0 3.4 19c1.72.46 8.6.46 8.6.46s6.88 0 8.6-.46a2.78 2.78 0 0 0 1.94-2 29 29 0 0 0 .46-5.25 29 29 0 0 0-.46-5.33z" fill="currentColor"/>
+                        <polygon points="9.75 15.02 15.5 11.75 9.75 8.48 9.75 15.02" fill="var(--sub-bg-color)"/>
+                      </svg>
+                    )}
+                    {link.type === 'facebook' && (
+                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M18 2h-3a5 5 0 0 0-5 5v3H7v4h3v8h4v-8h3l1-4h-4V7a1 1 0 0 1 1-1h3z" fill="currentColor" stroke="currentColor" stroke-width="0.5" stroke-linecap="round" stroke-linejoin="round"/>
+                      </svg>
+                    )}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </div>
+      </section>
+      <section class="cms-container">
+        <div class="inner">
+          <h3 class="cms-container_title">お知らせ</h3>
+          <ul class="notice_list">
+            <li class="notice_item">
+              <div class="notice_item_info">
+                <p>
+                  <span>
+                    お知らせのタグ
+                  </span>
+                  <span class="slash"></span>
+                  <span>投稿日</span>
+                </p>
+                <h4 class="notice_item_title">
+                  タイトル
+                </h4>
+              </div>
+              <div class="notice_item_btns">
+                <button class="notice_item_open">
+                  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <g clip-path="url(#clip0_623_115)">
+                    <path fill-rule="evenodd" clip-rule="evenodd" d="M10.4712 7.52879C10.5962 7.65381 10.6664 7.82334 10.6664 8.00012C10.6664 8.1769 10.5962 8.34644 10.4712 8.47145L6.6999 12.2428C6.63841 12.3065 6.56484 12.3572 6.48351 12.3922C6.40217 12.4271 6.31469 12.4455 6.22617 12.4463C6.13765 12.4471 6.04986 12.4302 5.96793 12.3967C5.886 12.3631 5.81157 12.3136 5.74897 12.251C5.68638 12.1885 5.63688 12.114 5.60336 12.0321C5.56983 11.9502 5.55297 11.8624 5.55374 11.7739C5.55451 11.6853 5.5729 11.5979 5.60784 11.5165C5.64277 11.4352 5.69356 11.3616 5.75724 11.3001L9.05724 8.00012L5.75724 4.70012C5.6358 4.57439 5.5686 4.40598 5.57012 4.23119C5.57164 4.05639 5.64175 3.88918 5.76536 3.76557C5.88896 3.64197 6.05617 3.57186 6.23097 3.57034C6.40577 3.56882 6.57417 3.63601 6.6999 3.75745L10.4712 7.52879Z" fill="white"/>
+                    </g>
+                    <defs>
+                    <clipPath id="clip0_623_115">
+                    <rect width="16" height="16" fill="white"/>
+                    </clipPath>
+                    </defs>
+                  </svg>                
+                </button>
+              </div>
+            </li>
+            <li class="notice_item">
+              <div class="notice_item_info">
+                <p>
+                  <span>
+                    お知らせのタグ
+                  </span>
+                  <span class="slash"></span>
+                  <span>投稿日</span>
+                </p>
+                <h4 class="notice_item_title">
+                  タイトル
+                </h4>
+              </div>
+              <div class="notice_item_btns">
+                <button class="notice_item_open">
+                  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <g clip-path="url(#clip0_623_115)">
+                    <path fill-rule="evenodd" clip-rule="evenodd" d="M10.4712 7.52879C10.5962 7.65381 10.6664 7.82334 10.6664 8.00012C10.6664 8.1769 10.5962 8.34644 10.4712 8.47145L6.6999 12.2428C6.63841 12.3065 6.56484 12.3572 6.48351 12.3922C6.40217 12.4271 6.31469 12.4455 6.22617 12.4463C6.13765 12.4471 6.04986 12.4302 5.96793 12.3967C5.886 12.3631 5.81157 12.3136 5.74897 12.251C5.68638 12.1885 5.63688 12.114 5.60336 12.0321C5.56983 11.9502 5.55297 11.8624 5.55374 11.7739C5.55451 11.6853 5.5729 11.5979 5.60784 11.5165C5.64277 11.4352 5.69356 11.3616 5.75724 11.3001L9.05724 8.00012L5.75724 4.70012C5.6358 4.57439 5.5686 4.40598 5.57012 4.23119C5.57164 4.05639 5.64175 3.88918 5.76536 3.76557C5.88896 3.64197 6.05617 3.57186 6.23097 3.57034C6.40577 3.56882 6.57417 3.63601 6.6999 3.75745L10.4712 7.52879Z" fill="white"/>
+                    </g>
+                    <defs>
+                    <clipPath id="clip0_623_115">
+                    <rect width="16" height="16" fill="white"/>
+                    </clipPath>
+                    </defs>
+                  </svg>                
+                </button>
+              </div>
+            </li>
+          </ul>
+          <div class="view-more">
+            <button class="view-more_btn">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M18 12.998H13V17.998C13 18.2633 12.8946 18.5176 12.7071 18.7052C12.5196 18.8927 12.2652 18.998 12 18.998C11.7348 18.998 11.4804 18.8927 11.2929 18.7052C11.1054 18.5176 11 18.2633 11 17.998V12.998H6C5.73478 12.998 5.48043 12.8927 5.29289 12.7052C5.10536 12.5176 5 12.2633 5 11.998C5 11.7328 5.10536 11.4785 5.29289 11.2909C5.48043 11.1034 5.73478 10.998 6 10.998H11V5.99805C11 5.73283 11.1054 5.47848 11.2929 5.29094C11.4804 5.1034 11.7348 4.99805 12 4.99805C12.2652 4.99805 12.5196 5.1034 12.7071 5.29094C12.8946 5.47848 13 5.73283 13 5.99805V10.998H18C18.2652 10.998 18.5196 11.1034 18.7071 11.2909C18.8946 11.4785 19 11.7328 19 11.998C19 12.2633 18.8946 12.5176 18.7071 12.7052C18.5196 12.8927 18.2652 12.998 18 12.998Z" fill="white"/>
+              </svg>
+              <p>さらに表示</p>
+            </button>
+          </div>
+        </div>
+      </section>
+      <section class="cms-container">
+        <div class="inner">
+          <h3 class="cms-container_title">ブログ</h3>
+          <ul class="blog_list">
+            <li class="blog_item">
+              <img
+                src="https://placehold.jp/1000x600.png"
+                alt=""
+              />
+              <p>
+                <span>
+                ブログのタグ
+                </span>
+                <span class="slash"></span>
+                <span>投稿日</span>
+              </p>
+              <h4>タイトル</h4>
+            </li>
+            
+          </ul>
+          <div class="view-more">
+            <button class="view-more_btn">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M18 12.998H13V17.998C13 18.2633 12.8946 18.5176 12.7071 18.7052C12.5196 18.8927 12.2652 18.998 12 18.998C11.7348 18.998 11.4804 18.8927 11.2929 18.7052C11.1054 18.5176 11 18.2633 11 17.998V12.998H6C5.73478 12.998 5.48043 12.8927 5.29289 12.7052C5.10536 12.5176 5 12.2633 5 11.998C5 11.7328 5.10536 11.4785 5.29289 11.2909C5.48043 11.1034 5.73478 10.998 6 10.998H11V5.99805C11 5.73283 11.1054 5.47848 11.2929 5.29094C11.4804 5.1034 11.7348 4.99805 12 4.99805C12.2652 4.99805 12.5196 5.1034 12.7071 5.29094C12.8946 5.47848 13 5.73283 13 5.99805V10.998H18C18.2652 10.998 18.5196 11.1034 18.7071 11.2909C18.8946 11.4785 19 11.7328 19 11.998C19 12.2633 18.8946 12.5176 18.7071 12.7052C18.5196 12.8927 18.2652 12.998 18 12.998Z" fill="white"/>
+              </svg>
+              <p>さらに表示</p>
+            </button>
+          </div>
+        </div>
+      </section>
+      <section class="form-container">
+        <div class="inner">
+          <h3 class="form-container_title">お問い合わせ</h3>
+          <p class="form-container_desc">お問い合わせのテキストを入力してください。</p>
+          <form class="form">
+            <div class="form-body">
+              <div class="form-body_input-wrapper">
+                <label for="corp_name">会社名</label>
+                <input type="text" name="corp_name" placeholder="◯◯株式会社△△部">
+              </div>
+              <div class="form-body_input-wrapper">
+                <label for="name">ご氏名</label>
+                <input type="text" name="name" placeholder="サイト 太郎">
+              </div>
+              <div class="form-body_input-wrapper">
+                <label for="email">メールアドレス</label>
+                <input type="email" name="email" placeholder="メールアドレス">
+              </div>
+              <fieldset id="optionFieldset">
+                <p class="subject_label">ご用件</p>
+                <div class="form-body_wrapper">
+                  <input type="checkbox" name="3st_elem">
+                  <label for="3st_elem">イベント出演の依頼</label>
+                </div>
+              </fieldset>
+              <textarea class="form-body_wrapper_textarea"  name="otherRequest" rows="4" cols="50" placeholder="自由記入欄"></textarea>
+            </div>
+            <button class="form-body_btn">
+              <p>送信</p>
+            </button>
+          </form>
+        </div>
+      </section>
+    </div>
+  </div>
+</Layout>
+
+<script is:inline>
+  document.addEventListener('DOMContentLoaded', function() {
+    // サイドバー要素を取得して非表示にする
+    const aside = document.getElementById('aside');
+    if (aside) {
+      aside.style.display = 'none';
+    }
+    
+    // メインコンテンツの幅を調整
+    const main = document.getElementById('main');
+    if (main) {
+      main.style.width = '100%';
+      main.style.maxWidth = '100%';
+    }
+  });
+
+document.addEventListener('DOMContentLoaded', function() {
+    // サイドバー要素を取得して非表示にする
+    const aside = document.getElementById('aside');
+    if (aside) {
+      aside.style.display = 'none';
+    }
+    
+    // メインコンテンツの幅を調整
+    const main = document.getElementById('main');
+    if (main) {
+      main.style.width = '100%';
+      main.style.maxWidth = '100%';
+    }
+    
+    // 更新ボタンにイベントリスナーを追加
+    const updateButton = document.querySelector('.preview_btn.update');
+    if (updateButton) {
+      updateButton.addEventListener('click', function() {
+        // ページをリロード
+        window.location.reload();
+      });
+    }
+  });
+
+document.addEventListener('DOMContentLoaded', function() {
+    // サイドバー要素を取得して非表示にする
+    const aside = document.getElementById('aside');
+    if (aside) {
+      aside.style.display = 'none';
+    }
+    
+    // メインコンテンツの幅を調整
+    const main = document.getElementById('main');
+    if (main) {
+      main.style.width = '100%';
+      main.style.maxWidth = '100%';
+    }
+    
+    // 更新ボタンにイベントリスナーを追加
+    const updateButton = document.querySelector('.preview_btn.update');
+    if (updateButton) {
+      updateButton.addEventListener('click', function() {
+        // ページをリロード
+        window.location.reload();
+      });
+    }
+    
+    // 閉じるボタンにイベントリスナーを追加
+    const closeButton = document.querySelector('.preview_btn.close');
+    if (closeButton) {
+      closeButton.addEventListener('click', function() {
+        // ウィンドウを閉じる
+        window.close();
+        
+        // window.close()が動作しない場合のフォールバック
+        // (多くのブラウザではwindow.close()はユーザーが開いたウィンドウのみ閉じることができます)
+        if (window.opener) {
+          // この場合はwindow.openerがあるので、おそらく新しいタブで開かれている
+          window.close();
+        }
+      });
+    }
+  });
+</script>

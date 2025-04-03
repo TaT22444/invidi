@@ -175,17 +175,53 @@ if (method === "POST") {
 
 const { projectId } = Astro.params;
 
+// ユーザーが認証されているか確認
+if (!authUser || !userData) {
+  console.error("認証されていないユーザーです");
+  return new Response(null, {
+    status: 303,
+    headers: { Location: "/" },
+  });
+}
+
+// プロジェクトデータの取得（ユーザーのプロジェクト配列から）
 let currentProject = null;
 if (userData && userData.projects) {
   currentProject = userData.projects.find((p: { id: any; }) => p.id === projectId);
 }
 
+// プロジェクトがユーザーに属しているか確認
 if (!currentProject) {
-  console.error("該当のプロジェクトが見つかりません");
+  console.error("該当のプロジェクトが見つかりません、またはアクセス権限がありません");
   return new Response(null, {
     status: 303,
     headers: { Location: "/" },
   });
+}
+
+// ここからFirestoreからプロジェクトの追加データを取得
+try {
+  if (projectId) {
+    const projectDoc = await db.collection("projects").doc(projectId).get();
+    if (projectDoc.exists) {
+      const firestoreProject = projectDoc.data();
+      
+      // Firestoreのデータで現在のプロジェクトデータを拡張
+      if (firestoreProject) {
+        // nameフィールドは上書きせず、Firestoreからの他のデータを統合
+        const { name: _, ...firestoreDataWithoutName } = firestoreProject;
+        currentProject = {
+          ...currentProject,
+          ...firestoreDataWithoutName,
+          // siteNameがなければFirestoreから取得、それもなければnameを使用
+          siteName: currentProject.siteName || firestoreProject.siteName || currentProject.name
+        };
+      }
+    }
+  }
+} catch (error) {
+  console.error("Firestoreからの追加データ取得に失敗:", error);
+  // 追加データの取得に失敗しても、基本的なプロジェクトデータがあるので処理を続行
 }
 
 const userId = authUser?.uid || "";

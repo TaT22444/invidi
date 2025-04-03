@@ -321,43 +321,58 @@ if (method === "POST") {
     }
   } else if (action === "update_project_info") {
     const projectIdFromForm = formData.get("projectId")?.toString();
-    const projectName = formData.get("projectName")?.toString();
     const projectDescription = formData.get("projectDescription")?.toString();
-    const siteName = formData.get("siteName")?.toString(); // サイト名を追加
+    const siteName = formData.get("siteName")?.toString();
     
     if (projectIdFromForm) {
       try {
         const projectRef = db.collection("projects").doc(projectIdFromForm);
         
-        // 更新データを準備
-        const updateData = {};
-        if (projectName) updateData.name = projectName;
+        // 更新データを準備（明示的に型を指定し、nameは絶対に含めない）
+        const updateData: Record<string, string> = {};
         if (projectDescription) updateData.description = projectDescription;
-        if (siteName) updateData.siteName = siteName; // サイト名を追加
+        if (siteName) updateData.siteName = siteName;
         
-        // Firestoreを更新
+        // nameが誤って含まれていないことを確認
+        if ('name' in updateData) {
+          delete updateData.name;
+        }
+        
+        console.log("更新するデータ:", JSON.stringify(updateData)); // デバッグ用ログ
+        
+        // Firestoreを更新（siteNameのみ）
         await projectRef.update(updateData);
         
         // ユーザーのprojects配列内の該当プロジェクトも更新
         if (userData && userData.projects) {
-          const updatedProjects = userData.projects.map((p) => {
+          const updatedProjects = userData.projects.map((p: any) => {
             if (p.id === projectIdFromForm) {
-              return { 
-                ...p, 
-                name: projectName || p.name,
+              // スプレッド演算子ではなく、明示的にフィールドを指定して更新
+              const updatedProject = {
+                id: p.id,
+                name: p.name, // 元のnameを維持
                 description: projectDescription || p.description,
-                siteName: siteName || p.siteName || p.name // サイト名を追加
+                siteName: siteName || p.siteName,
+                // その他必要なフィールドを保持
+                followers: p.followers,
+                currentPages: p.currentPages,
+                maxPages: p.maxPages,
+                createdAt: p.createdAt,
+                bannerUrl: p.bannerUrl,
+                profileImageUrl: p.profileImageUrl,
+                snsLinks: p.snsLinks || [],
+                plan: p.plan || "free"
               };
+              return updatedProject;
             }
             return p;
           });
           
-          await db.collection("users").doc(authUser.uid).update({
+          await db.collection("users").doc(authUser!.uid).update({
             projects: updatedProjects
           });
         }
         
-        // 成功レスポンス
         return new Response(JSON.stringify({ success: true }), {
           status: 200,
           headers: { "Content-Type": "application/json" }
@@ -460,27 +475,92 @@ if (method === "POST") {
         });
       }
     }
+  } else if (action === "add_sns") {
+    const snsType = formData.get("snsType")?.toString() || "";
+    const snsName = formData.get("snsName")?.toString() || "";
+    const snsDescription = formData.get("snsDescription")?.toString() || "";
+    
+    try {
+      const projectRef = db.collection("projects").doc(projectId);
+      const projectSnap = await projectRef.get();
+      
+      if (projectSnap.exists) {
+        const projectData = projectSnap.data();
+        const snsLinks = projectData?.snsLinks || [];
+        
+        // フリープランで5つ以上のSNSリンクがある場合はエラー
+        if (projectData?.plan === "free" && snsLinks.length >= 5) {
+          return new Response(null, {
+            status: 303,
+            headers: { 
+              Location: `/projects/${projectId}/profile?error=sns_limit_reached` 
+            }
+          });
+        }
+        
+        // 既存のSNS追加処理...
+      }
+    } catch (error) {
+      console.error("SNSリンク追加中にエラーが発生しました:", error);
+      return new Response(JSON.stringify({ error: "SNSリンクの追加に失敗しました" }), {
+        status: 500,
+        headers: { "Content-Type": "application/json" }
+      });
+    }
   }
 }
 
 const { projectId } = Astro.params;
 
-// プロジェクトデータの取得
-let currentProject = null;
-if (projectId) {
-  const projectSnap = await db.collection("projects").doc(projectId).get();
-  if (projectSnap.exists) {
-    currentProject = projectSnap.data();
-  }
-}
-
-if (!currentProject) {
-  console.error("該当のプロジェクトが見つかりません");
+// ユーザーが認証されているか確認
+if (!authUser || !userData) {
+  console.error("認証されていないユーザーです");
   return new Response(null, {
     status: 303,
     headers: { Location: "/" },
   });
 }
+
+// プロジェクトデータの取得（ユーザーのプロジェクト配列から）
+let currentProject = null;
+if (userData && userData.projects) {
+  currentProject = userData.projects.find((p: { id: any; }) => p.id === projectId);
+}
+
+// プロジェクトがユーザーに属しているか確認
+if (!currentProject) {
+  console.error("該当のプロジェクトが見つかりません、またはアクセス権限がありません");
+  return new Response(null, {
+    status: 303,
+    headers: { Location: "/" },
+  });
+}
+
+// ここからFirestoreからプロジェクトの追加データを取得
+try {
+  if (projectId) {
+    const projectDoc = await db.collection("projects").doc(projectId).get();
+    if (projectDoc.exists) {
+      const firestoreProject = projectDoc.data();
+      
+      // Firestoreのデータで現在のプロジェクトデータを拡張
+      if (firestoreProject) {
+        // nameフィールドは上書きせず、Firestoreからの他のデータを統合
+        const { name: _, ...firestoreDataWithoutName } = firestoreProject;
+        currentProject = {
+          ...currentProject,
+          ...firestoreDataWithoutName,
+          // siteNameがなければFirestoreから取得、それもなければnameを使用
+          siteName: currentProject.siteName || firestoreProject.siteName || currentProject.name
+        };
+      }
+    }
+  }
+} catch (error) {
+  console.error("Firestoreからの追加データ取得に失敗:", error);
+  // 追加データの取得に失敗しても、基本的なプロジェクトデータがあるので処理を続行
+}
+
 
 const userId = authUser?.uid || "";
 
@@ -534,7 +614,7 @@ const userId = authUser?.uid || "";
         <a href=`/projects/${projectId}/analitics` class="nav_link" id="switch-btn">アナリティクス</a>
       </li>
       <li class="nav_item">
-        <a href=`/projects/${projectId}` class="nav_link" id="switch-btn">プレビュー</a>
+        <a href=`/projects/${projectId}/preview` target="_blank" class="nav_link" id="switch-btn">プレビュー</a>
       </li>
       <li class="nav_item">
         <a href=`/projects/${projectId}` class="nav_link" id="switch-btn">プレビュー</a>
@@ -569,7 +649,9 @@ const userId = authUser?.uid || "";
               <p class="hero_body_prof_p">
                 <span>フォロワー</span>
                 <span class="slash"></span>
-                <strong class="strong">340人</strong>
+                <strong class={`strong ${currentProject?.followers > 100 ? 'many-followers' : ''}`}>
+                  {currentProject?.followers || 0}人
+                </strong>
               </p>
               <div class="hero_body_prof_title">
                 <h2 id="project-name">{currentProject?.siteName || currentProject?.name}</h2>            
@@ -621,66 +703,40 @@ const userId = authUser?.uid || "";
           </div>
           <ul class="hero_btn-list">
             <li class="hero_btn-item">
-              <p class="hero_btn-label">フォロー</p>
-            </li>
-            <li class="hero_btn-item">
-              <button class="delete_btn">
-                <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
-                  <path d="M7.05273 12.9454L12.9461 7.05371M7.05273 7.05371L12.9461 12.9454" stroke="#C4C4C4" stroke-linecap="round"/>
-                </svg>                                 
+              <button class="hero_btn follow-btn" id="follow-button">
+                <span>フォロー</span>
               </button>
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <path d="M7.8 2H16.2C19.4 2 22 4.6 22 7.8V16.2C22 17.7383 21.3889 19.2135 20.3012 20.3012C19.2135 21.3889 17.7383 22 16.2 22H7.8C4.6 22 2 19.4 2 16.2V7.8C2 6.26174 2.61107 4.78649 3.69878 3.69878C4.78649 2.61107 6.26174 2 7.8 2ZM7.6 4C6.64522 4 5.72955 4.37928 5.05442 5.05442C4.37928 5.72955 4 6.64522 4 7.6V16.4C4 18.39 5.61 20 7.6 20H16.4C17.3548 20 18.2705 19.6207 18.9456 18.9456C19.6207 18.2705 20 17.3548 20 16.4V7.6C20 5.61 18.39 4 16.4 4H7.6ZM17.25 5.5C17.5815 5.5 17.8995 5.6317 18.1339 5.86612C18.3683 6.10054 18.5 6.41848 18.5 6.75C18.5 7.08152 18.3683 7.39946 18.1339 7.63388C17.8995 7.8683 17.5815 8 17.25 8C16.9185 8 16.6005 7.8683 16.3661 7.63388C16.1317 7.39946 16 7.08152 16 6.75C16 6.41848 16.1317 6.10054 16.3661 5.86612C16.6005 5.6317 16.9185 5.5 17.25 5.5ZM12 7C13.3261 7 14.5979 7.52678 15.5355 8.46447C16.4732 9.40215 17 10.6739 17 12C17 13.3261 16.4732 14.5979 15.5355 15.5355C14.5979 16.4732 13.3261 17 12 17C10.6739 17 9.40215 16.4732 8.46447 15.5355C7.52678 14.5979 7 13.3261 7 12C7 10.6739 7.52678 9.40215 8.46447 8.46447C9.40215 7.52678 10.6739 7 12 7ZM12 9C11.2044 9 10.4413 9.31607 9.87868 9.87868C9.31607 10.4413 9 11.2044 9 12C9 12.7956 9.31607 13.5587 9.87868 14.1213C10.4413 14.6839 11.2044 15 12 15C12.7956 15 13.5587 14.6839 14.1213 14.1213C14.6839 13.5587 15 12.7956 15 12C15 11.2044 14.6839 10.4413 14.1213 9.87868C13.5587 9.31607 12.7956 9 12 9Z" fill="#c4c4c4"/>
-              </svg>                
             </li>
-            <li class="hero_btn-item">
-              <button class="delete_btn">
-                <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
-                  <path d="M7.05273 12.9454L12.9461 7.05371M7.05273 7.05371L12.9461 12.9454" stroke="#C4C4C4" stroke-linecap="round"/>
-                </svg>                                 
-              </button>
-              <svg width="16" height="16" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <g clip-path="url(#clip0_656_4826)">
-                <mask id="mask0_656_4826" style="mask-type:luminance" maskUnits="userSpaceOnUse" x="0" y="0" width="14" height="14">
-                <path d="M0 0H14V14H0V0Z" fill="#c4c4c4"/>
-                </mask>
-                <g mask="url(#mask0_656_4826)">
-                <path d="M11.025 0.65625H13.172L8.482 6.03025L14 13.3442H9.68L6.294 8.90925L2.424 13.3442H0.275L5.291 7.59425L0 0.65725H4.43L7.486 4.71025L11.025 0.65625ZM10.27 12.0562H11.46L3.78 1.87725H2.504L10.27 12.0562Z" fill="#fff"/>
-                </g>
-                </g>
-                <defs>
-                <clipPath id="clip0_656_4826">
-                <rect width="14" height="14" fill="white"/>
-                </clipPath>
-                </defs>
-              </svg>                
-            </li>
-            <li class="hero_btn-item">
-              <button class="delete_btn">
-                <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
-                  <path d="M7.05273 12.9454L12.9461 7.05371M7.05273 7.05371L12.9461 12.9454" stroke="#C4C4C4" stroke-linecap="round"/>
-                </svg>                                 
-              </button>
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <path d="M16.6002 5.82C15.9167 5.03953 15.5401 4.0374 15.5402 3H12.4502V15.4C12.4268 16.0712 12.1437 16.7071 11.6605 17.1735C11.1773 17.6399 10.5318 17.9004 9.86016 17.9C8.44016 17.9 7.26016 16.74 7.26016 15.3C7.26016 13.58 8.92016 12.29 10.6302 12.82V9.66C7.18016 9.2 4.16016 11.88 4.16016 15.3C4.16016 18.63 6.92016 21 9.85016 21C12.9902 21 15.5402 18.45 15.5402 15.3V9.01C16.7932 9.90985 18.2975 10.3926 19.8402 10.39V7.3C19.8402 7.3 17.9602 7.39 16.6002 5.82ZM9.75 15.021V8.48L15.5 11.751L9.75 15.021Z" stroke="#c4c4c4" stroke-width="1.5" stroke-miterlimit="10" stroke-linejoin="round"/>
-              </svg>                
-            </li>
-            <li class="hero_btn-item">
-              <button class="delete_btn">
-                <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
-                  <path d="M7.05273 12.9454L12.9461 7.05371M7.05273 7.05371L12.9461 12.9454" stroke="#C4C4C4" stroke-linecap="round"/>
-                </svg>                                 
-              </button>
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <path d="M22.54 6.42C22.4151 5.95228 22.1698 5.52547 21.8285 5.1821C21.4872 4.83873 21.0619 4.59079 20.595 4.463C18.88 4 12 4 12 4C12 4 5.12 4 3.405 4.463C2.93806 4.59079 2.51276 4.83873 2.1715 5.1821C1.83023 5.52547 1.58492 5.95228 1.46 6.42C1 8.148 1 11.75 1 11.75C1 11.75 1 15.352 1.46 17.08C1.58476 17.5479 1.83001 17.9749 2.17129 18.3185C2.51256 18.662 2.93794 18.9101 3.405 19.038C5.121 19.5 12 19.5 12 19.5C12 19.5 18.88 19.5 20.595 19.038C21.0621 18.9101 21.4874 18.662 21.8287 18.3185C22.17 17.9749 22.4152 17.5479 22.54 17.08C23 15.354 23 11.75 23 11.75C23 11.75 23 8.148 22.54 6.42ZM9.75 15.021V8.48L15.5 11.751L9.75 15.021Z" stroke="#c4c4c4" stroke-width="1.5" stroke-miterlimit="10" stroke-linejoin="round"/>
-              </svg>                
-            </li>
-            <li class="hero_btn-item">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <path d="M18 12.998H13V17.998C13 18.2633 12.8946 18.5176 12.7071 18.7052C12.5196 18.8927 12.2652 18.998 12 18.998C11.7348 18.998 11.4804 18.8927 11.2929 18.7052C11.1054 18.5176 11 18.2633 11 17.998V12.998H6C5.73478 12.998 5.48043 12.8927 5.29289 12.7052C5.10536 12.5176 5 12.2633 5 11.998C5 11.7328 5.10536 11.4785 5.29289 11.2909C5.48043 11.1034 5.73478 10.998 6 10.998H11V5.99805C11 5.73283 11.1054 5.47848 11.2929 5.29094C11.4804 5.1034 11.7348 4.99805 12 4.99805C12.2652 4.99805 12.5196 5.1034 12.7071 5.29094C12.8946 5.47848 13 5.73283 13 5.99805V10.998H18C18.2652 10.998 18.5196 11.1034 18.7071 11.2909C18.8946 11.4785 19 11.7328 19 11.998C19 12.2633 18.8946 12.5176 18.7071 12.7052C18.5196 12.8927 18.2652 12.998 18 12.998Z" fill="#c4c4c4"/>
-              </svg>                
-              <p class="hero_btn-label">追加</p>
-            </li>
+            
+            {currentProject?.snsLinks?.map((link: any) => (
+              <li class="hero_btn-item" 
+                  data-sns-type={link.type} 
+                  data-sns-name={link.name} 
+                  data-sns-description={link.description || ''}>
+                  {link.type === 'instagram' && (
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                      <path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zm0-2.163c-3.259 0-3.667.014-4.947.072-4.358.2-6.78 2.618-6.98 6.98-.059 1.281-.073 1.689-.073 4.948 0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98 1.281.058 1.689.072 4.948.072 3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98-1.281-.059-1.69-.073-4.949-.073zm0 5.838c-3.403 0-6.162 2.759-6.162 6.162s2.759 6.163 6.162 6.163 6.162-2.759 6.162-6.163c0-3.403-2.759-6.162-6.162-6.162zm0 10.162c-2.209 0-4-1.79-4-4 0-2.209 1.791-4 4-4s4 1.791 4 4c0 2.21-1.791 4-4 4zm6.406-11.845c-.796 0-1.441.645-1.441 1.44s.645 1.44 1.441 1.44c.795 0 1.439-.645 1.439-1.44s-.644-1.44-1.439-1.44z" fill="currentColor"/>
+                    </svg>
+                  )}
+                  {link.type === 'twitter' && (
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                      <path d="M23 3a10.9 10.9 0 0 1-3.14 1.53 4.48 4.48 0 0 0-7.86 3v1A10.66 10.66 0 0 1 3 4s-4 9 5 13a11.64 11.64 0 0 1-7 2c9 5 20 0 20-11.5a4.5 4.5 0 0 0-.08-.83A7.72 7.72 0 0 0 23 3z" fill="currentColor" stroke="currentColor" stroke-width="0.5" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                  )}
+                  {link.type === 'youtube' && (
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                      <path d="M22.54 6.42a2.78 2.78 0 0 0-1.94-2C18.88 4 12 4 12 4s-6.88 0-8.6.46a2.78 2.78 0 0 0-1.94 2A29 29 0 0 0 1 11.75a29 29 0 0 0 .46 5.33A2.78 2.78 0 0 0 3.4 19c1.72.46 8.6.46 8.6.46s6.88 0 8.6-.46a2.78 2.78 0 0 0 1.94-2 29 29 0 0 0 .46-5.25 29 29 0 0 0-.46-5.33z" fill="currentColor"/>
+                      <polygon points="9.75 15.02 15.5 11.75 9.75 8.48 9.75 15.02" fill="var(--sub-bg-color)"/>
+                    </svg>
+                  )}
+                  {link.type === 'facebook' && (
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                      <path d="M18 2h-3a5 5 0 0 0-5 5v3H7v4h3v8h4v-8h3l1-4h-4V7a1 1 0 0 1 1-1h3z" fill="currentColor" stroke="currentColor" stroke-width="0.5" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                  )}
+                <span class="sns-account-tooltip">{link.name}</span>
+              </li>
+            ))}
           </ul>
         </div>
       </div>
@@ -691,13 +747,20 @@ const userId = authUser?.uid || "";
     <p>フリープランでは、5つまでsnsを表示できます</p>
   </div>
   
-  <!-- SNS追加フォーム -->
+  {(currentProject?.plan === 'free' && (currentProject?.snsLinks?.length || 0) >= 5) ? (
+    <div class="upgrade-container">
+      <button id="upgrade-sns-btn" class="upgrade-btn">proプランでさらに追加</button>
+    </div>
+  ) : (
+    <button id="add-sns-btn" class="add-sns-btn">追加</button>
+  )}
+  
   <div class="sns-form">
-    <div class="sns-form-row">
+    <div class="sns-form-row" class:list={{'disabled': currentProject?.plan === 'free' && (currentProject?.snsLinks?.length || 0) >= 5}}>
       <div class="sns-type">
         <label for="sns-type">SNS:</label>
         <div class="select-wrapper">
-          <select id="sns-type">
+          <select id="sns-type" disabled={currentProject?.plan === 'free' && (currentProject?.snsLinks?.length || 0) >= 5}>
             <option value="instagram">Instagram</option>
             <option value="twitter">Twitter</option>
             <option value="facebook">Facebook</option>
@@ -719,17 +782,16 @@ const userId = authUser?.uid || "";
           </div>
         </div>
       </div>
-      <span class="slash"></span>
+      
       <div class="sns-account">
         <label for="sns-account">アカウント名:</label>
-        <input type="text" id="sns-account" placeholder="アカウント名を入力">
+        <input type="text" id="sns-account" placeholder="アカウント名を入力" disabled={currentProject?.plan === 'free' && (currentProject?.snsLinks?.length || 0) >= 5} />
       </div>
-      <span class="slash"></span>
+      
       <div class="sns-description">
         <label for="sns-description">アカウントの簡単な説明:</label>
-        <input type="text" id="sns-description" placeholder="例: 相原立弥のインスタアカウント">
+        <input type="text" id="sns-description" placeholder="例: 相互フォロー歓迎のインスタ..." disabled={currentProject?.plan === 'free' && (currentProject?.snsLinks?.length || 0) >= 5} />
       </div>
-      <button id="add-sns-btn" class="add-sns-btn">追加</button>
     </div>
   </div>
   
@@ -1055,14 +1117,16 @@ const userId = authUser?.uid || "";
       }
       &item{
         position: relative;
-        width: 72px;
-        height: 56px;
+        width: 64px;
+        height: 52px;
         display: flex;
         align-items: center;
         justify-content: center;
         gap: 4px;
         background-color: var(--elem-bg-color);
         border-radius: var(--border-radius-m);
+        color: var(--sub-font-color);
+        font-size: var(--font-size-xxs);
         border: 1px solid var(--sub-border-color);
                   
         >.delete_btn{
@@ -1323,6 +1387,83 @@ const userId = authUser?.uid || "";
       padding: 12px;
     }
   }
+  
+  .sns-account-tooltip {
+    position: absolute;
+    bottom: -24px;
+    left: 50%;
+    transform: translateX(-50%);
+    background-color: rgba(0, 0, 0, 0.7);
+    color: white;
+    padding: 8px 8px;
+    border-radius: var(--border-radius-s);
+    font-size: var(--font-size-xxs);
+    white-space: nowrap;
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.2s, visibility 0.2s;
+    z-index: 10;
+  }
+  
+  .hero_btn-item:hover .sns-account-tooltip {
+    opacity: 1;
+    visibility: visible;
+  }
+
+  .sns-item {
+    display: flex;
+    align-items: center;
+    padding: 8px 12px;
+    background-color: #f5f5f5;
+    border-radius: 6px;
+  }
+  
+  
+  .sns-name {
+    flex: 1;
+    font-size: 14px;
+    color: #333;
+  }
+  
+  .delete-sns-btn {
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 4px;
+  }
+
+  .many-followers {
+    color: var(--accent-color, #ffd700);
+  }
+  
+  .sns-form-row.disabled {
+    background-color: rgba(40, 40, 40, 0.8);
+    opacity: 0.4;
+    pointer-events: none;
+  }
+  
+  .upgrade-container {
+    display: flex;
+    margin-bottom: 16px;
+    position: relative;
+  }
+  
+  .upgrade-btn {
+    background-color: var(--accent-bg-color);
+    color: white;
+    padding: 12px 16px;
+    border-radius: var(--border-radius-m);
+    font-size: var(--font-size-xs);
+    cursor: pointer;
+    border: none;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    transition: all 0.2s ease;
+  }
+  
+  .upgrade-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+  }
 </style>
 
 
@@ -1438,7 +1579,7 @@ const userId = authUser?.uid || "";
         
         // プロジェクト情報の更新
         const projectData = {
-          name: updatedName,
+          siteName: updatedName,
           description: updatedDescription,
           projectId: document.getElementById('project-id-input')?.value
         };
@@ -1871,19 +2012,19 @@ const userId = authUser?.uid || "";
                     <path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zm0-2.163c-3.259 0-3.667.014-4.947.072-4.358.2-6.78 2.618-6.98 6.98-.059 1.281-.073 1.689-.073 4.948 0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98 1.281.058 1.689.072 4.948.072 3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98-1.281-.059-1.69-.073-4.949-.073zm0 5.838c-3.403 0-6.162 2.759-6.162 6.162s2.759 6.163 6.162 6.163 6.162-2.759 6.162-6.163c0-3.403-2.759-6.162-6.162-6.162zm0 10.162c-2.209 0-4-1.79-4-4 0-2.209 1.791-4 4-4s4 1.791 4 4c0 2.21-1.791 4-4 4zm6.406-11.845c-.796 0-1.441.645-1.441 1.44s.645 1.44 1.441 1.44c.795 0 1.439-.645 1.439-1.44s-.644-1.44-1.439-1.44z" fill="#fff"/>
                   </svg>`,
       twitter: `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                  <path d="M23.953 4.57a10 10 0 01-2.825.775 4.958 4.958 0 002.163-2.723c-.951.555-2.005.959-3.127 1.184a4.92 4.92 0 00-8.384 4.482C7.69 8.095 4.067 6.13 1.64 3.162a4.822 4.822 0 00-.666 2.475c0 1.71.87 3.213 2.188 4.096a4.904 4.904 0 01-2.228-.616v.06a4.923 4.923 0 003.946 4.827 4.996 4.996 0 01-2.212.085 4.936 4.936 0 004.604 3.417 9.867 9.867 0 01-6.102 2.105c-.39 0-.779-.023-1.17-.067a13.995 13.995 0 007.557 2.209c9.053 0 13.998-7.496 13.998-13.985 0-.21 0-.42-.015-.63A9.935 9.935 0 0024 4.59z" fill="currentColor"/>
+                  <path d="M23.953 4.57a10 10 0 01-2.825.775 4.958 4.958 0 002.163-2.723c-.951.555-2.005.959-3.127 1.184a4.92 4.92 0 00-8.384 4.482C7.69 8.095 4.067 6.13 1.64 3.162a4.822 4.822 0 00-.666 2.475c0 1.71.87 3.213 2.188 4.096a4.904 4.904 0 01-2.228-.616v.06a4.923 4.923 0 003.946 4.827 4.996 4.996 0 01-2.212.085 4.936 4.936 0 004.604 3.417 9.867 9.867 0 01-6.102 2.105c-.39 0-.779-.023-1.17-.067a13.995 13.995 0 007.557 2.209c9.053 0 13.998-7.496 13.998-13.985 0-.21 0-.42-.015-.63A9.935 9.935 0 0024 4.59z" fill="#c4c4c4"/>
                 </svg>`,
-      facebook: `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                  <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z" fill="white"/>
+      facebook: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z" fill="#c4c4c4"/>
                 </svg>`,
-      youtube: `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                  <path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z" fill="white"/>
+      youtube: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z" fill="#c4c4c4"/>
               </svg>`,
-      tiktok: `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <path d="M12.525.02c1.31-.02 2.61-.01 3.91-.02.08 1.53.63 3.09 1.75 4.17 1.12 1.11 2.7 1.62 4.24 1.79v4.03c-1.44-.05-2.89-.35-4.2-.97-.57-.26-1.1-.59-1.62-.93-.01 2.92.01 5.84-.02 8.75-.08 1.4-.54 2.79-1.35 3.94-1.31 1.92-3.58 3.17-5.91 3.21-1.43.08-2.86-.31-4.08-1.03-2.02-1.19-3.44-3.37-3.65-5.71-.02-.5-.03-1-.01-1.49.18-1.9 1.12-3.72 2.58-4.96 1.66-1.44 3.98-2.13 6.15-1.72.02 1.48-.04 2.96-.04 4.44-.99-.32-2.15-.23-3.02.37-.63.41-1.11 1.04-1.36 1.75-.21.51-.15 1.07-.14 1.61.24 1.64 1.82 3.02 3.5 2.87 1.12-.01 2.19-.66 2.77-1.61.19-.33.4-.67.41-1.06.1-1.79.06-3.57.07-5.36.01-4.03-.01-8.05.02-12.07z" fill="white"/>
+      tiktok: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M12.525.02c1.31-.02 2.61-.01 3.91-.02.08 1.53.63 3.09 1.75 4.17 1.12 1.11 2.7 1.62 4.24 1.79v4.03c-1.44-.05-2.89-.35-4.2-.97-.57-.26-1.1-.59-1.62-.93-.01 2.92.01 5.84-.02 8.75-.08 1.4-.54 2.79-1.35 3.94-1.31 1.92-3.58 3.17-5.91 3.21-1.43.08-2.86-.31-4.08-1.03-2.02-1.19-3.44-3.37-3.65-5.71-.02-.5-.03-1-.01-1.49.18-1.9 1.12-3.72 2.58-4.96 1.66-1.44 3.98-2.13 6.15-1.72.02 1.48-.04 2.96-.04 4.44-.99-.32-2.15-.23-3.02.37-.63.41-1.11 1.04-1.36 1.75-.21.51-.15 1.07-.14 1.61.24 1.64 1.82 3.02 3.5 2.87 1.12-.01 2.19-.66 2.77-1.61.19-.33.4-.67.41-1.06.1-1.79.06-3.57.07-5.36.01-4.03-.01-8.05.02-12.07z" fill="#c4c4c4"/>
               </svg>`,
-      line: `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <path d="M24 10.304c0-5.369-5.383-9.738-12-9.738-6.616 0-12 4.369-12 9.738 0 4.814 4.269 8.846 10.036 9.608.391.084.922.258 1.057.592.121.303.079.778.039 1.085l-.171 1.027c-.053.303-.242 1.186 1.039.647 1.281-.54 6.911-4.069 9.428-6.967 1.739-1.907 2.572-3.843 2.572-5.992zm-18.988-2.595c.129 0 .234.105.234.234v4.153h2.287c.129 0 .233.104.233.233v.842c0 .129-.104.234-.233.234h-3.363c-.063 0-.119-.025-.161-.065-.043-.043-.068-.1-.068-.169v-5.229c0-.129.104-.233.233-.233h.838zm14.992 0c.129 0 .233.105.233.234v.842c0 .129-.104.234-.233.234h-2.287v.883h2.287c.129 0 .233.105.233.234v.842c0 .129-.104.233-.233.233h-2.287v.884h2.287c.129 0 .233.105.233.233v.842c0 .129-.104.234-.233.234h-3.363c-.063 0-.12-.025-.162-.065-.043-.043-.067-.1-.067-.169v-5.229c0-.063.025-.12.067-.162.042-.043.099-.067.162-.067h3.363zm-10.026.001c.129 0 .233.104.233.233v5.229c0 .129-.104.234-.233.234h-.837c-.129 0-.234-.105-.234-.234v-5.229c0-.129.105-.233.234-.233h.837zm2.919 0c.129 0 .233.104.233.233v5.229c0 .129-.104.234-.233.234h-.837c-.129 0-.234-.105-.234-.234v-3.176l-1.077 1.645-.536.831c-.039.059-.106.098-.181.098-.075 0-.142-.039-.181-.098l-.535-.831-1.077-1.645v3.176c0 .129-.105.234-.234.234h-.837c-.129 0-.234-.105-.234-.234v-5.229c0-.129.105-.233.234-.233h.837c.075 0 .142.039.18.098l1.853 2.842 1.853-2.842c.039-.059.105-.098.181-.098h.837z" fill="white"/>
+      line: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M24 10.304c0-5.369-5.383-9.738-12-9.738-6.616 0-12 4.369-12 9.738 0 4.814 4.269 8.846 10.036 9.608.391.084.922.258 1.057.592.121.303.079.778.039 1.085l-.171 1.027c-.053.303-.242 1.186 1.039.647 1.281-.54 6.911-4.069 9.428-6.967 1.739-1.907 2.572-3.843 2.572-5.992zm-18.988-2.595c.129 0 .234.105.234.234v4.153h2.287c.129 0 .233.104.233.233v.842c0 .129-.104.234-.233.234h-3.363c-.063 0-.119-.025-.161-.065-.043-.043-.068-.1-.068-.169v-5.229c0-.129.104-.233.233-.233h.838zm14.992 0c.129 0 .233.105.233.234v.842c0 .129-.104.234-.233.234h-2.287v.883h2.287c.129 0 .233.105.233.234v.842c0 .129-.104.233-.233.233h-2.287v.884h2.287c.129 0 .233.105.233.233v.842c0 .129-.104.234-.233.234h-3.363c-.063 0-.12-.025-.162-.065-.043-.043-.067-.1-.067-.169v-5.229c0-.063.025-.12.067-.162.042-.043.099-.067.162-.067h3.363zm-10.026.001c.129 0 .233.104.233.233v5.229c0 .129-.104.234-.233.234h-.837c-.129 0-.234-.105-.234-.234v-5.229c0-.129.105-.233.234-.233h.837zm2.919 0c.129 0 .233.104.233.233v5.229c0 .129-.104.234-.233.234h-.837c-.129 0-.234-.105-.234-.234v-3.176l-1.077 1.645-.536.831c-.039.059-.106.098-.181.098-.075 0-.142-.039-.181-.098l-.535-.831-1.077-1.645v3.176c0 .129-.105.234-.234.234h-.837c-.129 0-.234-.105-.234-.234v-5.229c0-.129.105-.233.234-.233h.837c.075 0 .142.039.18.098l1.853 2.842 1.853-2.842c.039-.059.105-.098.181-.098h.837z" fill="#c4c4c4"/>
             </svg>`
     };
     
@@ -2210,6 +2351,101 @@ const userId = authUser?.uid || "";
     const success = await addSnsLink(snsType, snsAccount, snsDescription);
     if (success) {
       console.log('SNSリンクが追加されました');
+    }
+  });
+
+  // SNSアイコンのホバーイベントリスナー
+  document.addEventListener('DOMContentLoaded', () => {
+    const snsItems = document.querySelectorAll('.hero_btn-item[data-sns-type]');
+    
+    snsItems.forEach(item => {
+      item.addEventListener('mouseenter', () => {
+        const snsType = item.getAttribute('data-sns-type');
+        const snsName = item.getAttribute('data-sns-name');
+        const snsDescription = item.getAttribute('data-sns-description');
+        
+        console.log(`SNS: ${snsType}, アカウント: ${snsName}, 説明: ${snsDescription}`);
+      });
+    });
+  });
+
+  // プランアップグレードボタンのイベントハンドラ
+  const upgradeSnsBtn = document.getElementById('upgrade-sns-btn');
+  if (upgradeSnsBtn) {
+    upgradeSnsBtn.addEventListener('click', () => {
+      // アップグレードページへ遷移
+      window.location.href = '/upgrade-plan';
+    });
+  }
+  
+  // エラーメッセージがある場合の処理
+  document.addEventListener('DOMContentLoaded', () => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const error = urlParams.get('error');
+    
+    if (error === 'sns_limit_reached') {
+      alert('フリープランでは5つまでしかSNSリンクを追加できません。プランをアップグレードしてください。');
+    }
+  });
+
+  // プロジェクト名の編集を処理する関数
+  async function handleProjectNameEdit(event) {
+    const projectName = event.target.textContent;
+    const projectId = event.target.dataset.projectId;
+
+    try {
+      const formData = new FormData();
+      formData.append("action", "update_project_info");
+      formData.append("projectId", projectId);
+      // プロジェクト名の変更時はsiteNameのみを更新
+      formData.append("siteName", projectName);
+      // nameは送信しない
+
+      const response = await fetch("", {
+        method: "POST",
+        body: formData
+      });
+
+      if (!response.ok) {
+        throw new Error("更新に失敗しました");
+      }
+    } catch (error) {
+      console.error("プロジェクト名の更新に失敗:", error);
+      // エラー時は元の値に戻す
+      event.target.textContent = event.target.dataset.originalName;
+    }
+  }
+
+  // プロジェクト名の要素にイベントリスナーを設定
+  document.querySelector(".project-name")?.addEventListener("blur", handleProjectNameEdit);
+
+  // プロジェクト情報保存ボタンのイベントハンドラ
+  document.getElementById('save-project-info')?.addEventListener('click', async function() {
+    const projectDescription = document.getElementById('project-description').textContent;
+    const siteName = document.querySelector('.project-name').textContent;
+    const projectId = this.dataset.projectId;
+    
+    try {
+      const formData = new FormData();
+      formData.append("action", "update_project_info");
+      formData.append("projectId", projectId);
+      // nameは送信しない（重要）
+      formData.append("siteName", siteName);
+      formData.append("projectDescription", projectDescription);
+      
+      const response = await fetch("", {
+        method: "POST",
+        body: formData
+      });
+      
+      if (!response.ok) {
+        throw new Error("更新に失敗しました");
+      }
+      
+      alert("保存しました");
+    } catch (error) {
+      console.error("プロジェクト情報の更新に失敗:", error);
+      alert("更新に失敗しました");
     }
   });
 </script>

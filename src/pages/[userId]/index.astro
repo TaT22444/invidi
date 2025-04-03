@@ -115,73 +115,83 @@ if (method === "POST") {
     const projectName = formData.get("projectName")?.toString() || "";
     const projectDescription = formData.get("projectDescription")?.toString() || "";
 
-    // 仮: フォロワー数、ページ数、等の初期値
-    const newProject = {
-      id: uuidv4(),
-      name: projectName,
-      description: projectDescription,
-      followers: 0,
-      currentPages: 0,
-      maxPages: 3,
-      createdAt: new Date(),
-      ownerId: userId,
-      allTags: [],
-    };
+    // フリープランで、すでに1つプロジェクトを持っている場合はエラー
+    if (planName === "free" && projects.length >= 1) {
+      postError = "フリープランでは1つまでしかプロジェクトを作成できません。プランをアップグレードしてください。";
+    } else {
+      // 仮: フォロワー数、ページ数、等の初期値
+      const newProject = {
+        id: uuidv4(),
+        name: projectName,
+        description: projectDescription,
+        followers: 0,
+        currentPages: 0,
+        maxPages: 3,
+        createdAt: new Date(),
+        ownerId: userId,
+        allTags: [],
+      };
 
-    try {
-      // Firestore の "users" ドキュメントに projects[] を push
-      const userSnap = await userRef.get();
-      if (userSnap.exists) {
-        const currentProjects = userSnap.data().projects || [];
-        currentProjects.push(newProject);
-        await userRef.update({ projects: currentProjects });
+      try {
+        // Firestore の "users" ドキュメントに projects[] を push
+        const userSnap = await userRef.get();
+        if (userSnap.exists) {
+          const currentProjects = userSnap.data().projects || [];
+          currentProjects.push(newProject);
+          await userRef.update({ projects: currentProjects });
 
-        // (A) freeプランなら "projects" コレクションに新規ドキュメント＆サブコレクションを作成する
-        if (planName === "free") {
-          // たとえば "projects" コレクションにドキュメント作成
-          const projectDocRef = db.collection("projects").doc(newProject.id);
+          // (A) freeプランなら "projects" コレクションに新規ドキュメント＆サブコレクションを作成する
+          if (planName === "free") {
+            // たとえば "projects" コレクションにドキュメント作成
+            const projectDocRef = db.collection("projects").doc(newProject.id);
 
-          await projectDocRef.set({
-            userId,                 // 紐付け用
-            plan: planName,         // "free"
-            name: projectName,
-            description: projectDescription,
-            createdAt: new Date(),
-            allTags: [],
+            await projectDocRef.set({
+              userId,                 // 紐付け用
+              plan: planName,         // "free"
+              name: projectName,
+              description: projectDescription,
+              createdAt: new Date(),
+              allTags: [],
+              followers: 0,           // フォロワー数も保存する
+              maxFollowers: 100,      // 最大フォロワー数も追加（フリープランの制限として）
+              currentPages: 0,        // 現在のページ数も追加
+              maxPages: 3,            // 最大ページ数も追加
+              ownerId: userId,        // オーナーIDも保存
+            });
+
+            // blog / notice / contact のサブコレクションを "形だけ" 作りたいなら、
+            // それぞれ最低１つはドキュメントを追加する必要あり
+            await projectDocRef.collection("blog").doc("init").set({
+              title: "サンプルブログ",
+              content: "これは初期作成されたサンプル投稿です",
+              createdAt: new Date(),
+            });
+
+            await projectDocRef.collection("notice").doc("init").set({
+              title: "サンプルお知らせ",
+              content: "これは初期作成されたサンプルお知らせです",
+              createdAt: new Date(),
+            });
+
+            await projectDocRef.collection("contact").doc("init").set({
+              name: "Contactサンプル",
+              message: "お問い合わせフォームに送信された例・・・",
+              createdAt: new Date(),
+            });
+          }
+
+          // リダイレクト
+          return new Response(null, {
+            status: 303,
+            headers: { Location: `/${userId}` },
           });
-
-          // blog / notice / contact のサブコレクションを “形だけ” 作りたいなら、
-          // それぞれ最低１つはドキュメントを追加する必要あり
-          await projectDocRef.collection("blog").doc("init").set({
-            title: "サンプルブログ",
-            content: "これは初期作成されたサンプル投稿です",
-            createdAt: new Date(),
-          });
-
-          await projectDocRef.collection("notice").doc("init").set({
-            title: "サンプルお知らせ",
-            content: "これは初期作成されたサンプルお知らせです",
-            createdAt: new Date(),
-          });
-
-          await projectDocRef.collection("contact").doc("init").set({
-            name: "Contactサンプル",
-            message: "お問い合わせフォームに送信された例・・・",
-            createdAt: new Date(),
-          });
+        } else {
+          postError = "ユーザーデータが見つかりません";
         }
-
-        // リダイレクト
-        return new Response(null, {
-          status: 303,
-          headers: { Location: `/${userId}` },
-        });
-      } else {
-        postError = "ユーザーデータが見つかりません";
+      } catch (err) {
+        console.error("[Create Project Error]", err);
+        postError = "プロジェクト作成に失敗しました";
       }
-    } catch (err) {
-      console.error("[Create Project Error]", err);
-      postError = "プロジェクト作成に失敗しました";
     }
   }
 
@@ -299,17 +309,31 @@ if (method === "POST") {
           <span>プロジェクト</span>
           <span class="box_header_label_elem">{projects.length}</span>
           <span>/</span>
-          <span>3</span>
+          <span>{planName === "free" ? 1 : 3}</span>
         </h2>
-        <button id="open-modal" class="box_header_btn">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <path
-              d="M18 12.998H13V17.998C13 18.2633 12.8946 18.5176 12.7071 18.7052C12.5196 18.8927 12.2652 18.998 12 18.998C11.7348 18.998 11.4804 18.8927 11.2929 18.7052C11.1054 18.5176 11 18.2633 11 17.998V12.998H6C5.73478 12.998 5.48043 12.8927 5.29289 12.7052C5.10536 12.5176 5 18.2633 5 11.998C5 11.7328 5.10536 11.4785 5.29289 11.2909C5.48043 11.1034 5.73478 10.998 6 10.998H11V5.99805C11 5.73283 11.1054 5.47848 11.2929 5.29094C11.4804 5.1034 11.7348 4.99805 12 4.99805C12.2652 4.99805 12.5196 5.1034 12.7071 5.29094C12.8946 5.47848 13 5.73283 13 5.99805V10.998H18C18.2652 10.998 18.5196 11.1034 18.7071 11.2909C18.8946 11.4785 19 11.7328 19 11.998C19 12.2633 18.8946 12.5176 18.7071 12.7052C18.5196 12.8927 18.2652 12.998 18 12.998Z"
-              fill="white"
-            />
-          </svg>
-          <p>新しいプロジェクト</p>
-        </button>
+        
+        {/* フリープランで1つ以上のプロジェクトがある場合は「proプランでさらに作成」ボタンを表示 */}
+        {(planName === "free" && projects.length >= 1) ? (
+          <button id="upgrade-plan-btn" class="box_header_btn upgrade-btn">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path
+                d="M18 12.998H13V17.998C13 18.2633 12.8946 18.5176 12.7071 18.7052C12.5196 18.8927 12.2652 18.998 12 18.998C11.7348 18.998 11.4804 18.8927 11.2929 18.7052C11.1054 18.5176 11 18.2633 11 17.998V12.998H6C5.73478 12.998 5.48043 12.8927 5.29289 12.7052C5.10536 12.5176 5 18.2633 5 11.998C5 11.7328 5.10536 11.4785 5.29289 11.2909C5.48043 11.1034 5.73478 10.998 6 10.998H11V5.99805C11 5.73283 11.1054 5.47848 11.2929 5.29094C11.4804 5.1034 11.7348 4.99805 12 4.99805C12.2652 4.99805 12.5196 5.1034 12.7071 5.29094C12.8946 5.47848 13 5.73283 13 5.99805V10.998H18C18.2652 10.998 18.5196 11.1034 18.7071 11.2909C18.8946 11.4785 19 11.7328 19 11.998C19 12.2633 18.8946 12.5176 18.7071 12.7052C18.5196 12.8927 18.2652 12.998 18 12.998Z"
+                fill="white"
+              />
+            </svg>
+            <p>proプランでさらに作成</p>
+          </button>
+        ) : (
+          <button id="open-modal" class="box_header_btn">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path
+                d="M18 12.998H13V17.998C13 18.2633 12.8946 18.5176 12.7071 18.7052C12.5196 18.8927 12.2652 18.998 12 18.998C11.7348 18.998 11.4804 18.8927 11.2929 18.7052C11.1054 18.5176 11 18.2633 11 17.998V12.998H6C5.73478 12.998 5.48043 12.8927 5.29289 12.7052C5.10536 12.5176 5 18.2633 5 11.998C5 11.7328 5.10536 11.4785 5.29289 11.2909C5.48043 11.1034 5.73478 10.998 6 10.998H11V5.99805C11 5.73283 11.1054 5.47848 11.2929 5.29094C11.4804 5.1034 11.7348 4.99805 12 4.99805C12.2652 4.99805 12.5196 5.1034 12.7071 5.29094C12.8946 5.47848 13 5.73283 13 5.99805V10.998H18C18.2652 10.998 18.5196 11.1034 18.7071 11.2909C18.8946 11.4785 19 11.7328 19 11.998C19 12.2633 18.8946 12.5176 18.7071 12.7052C18.5196 12.8927 18.2652 12.998 18 12.998Z"
+                fill="white"
+              />
+            </svg>
+            <p>新しいプロジェクト</p>
+          </button>
+        )}
       </div>
       <div class="box_search">
         <div class="box_search_wrapper">
@@ -452,16 +476,31 @@ if (method === "POST") {
     <div class="modal-content">
       <div class="modal_header">
         <h2 class="modal_header_title">新しくプロジェクトを作成</h2>
-        <p class="modal_header_desc">あと2つ作成できます</p>
-        <button class="upgrade_btn">
-          アップグレードして作成可能枠を増やす
-        </button>
+        <p class="modal_header_desc">
+          {planName === "free" ? 
+            projects.length >= 1 ? "フリープランでの上限に達しています" : "あと1つ作成できます" :
+            `あと${3 - projects.length}つ作成できます`}
+        </p>
+        {(planName === "free" && projects.length >= 1) ? (
+          <button class="upgrade_btn" id="upgrade-btn-modal">
+            アップグレードして作成可能枠を増やす
+          </button>
+        ) : (
+          <button class="upgrade_btn">
+            アップグレードして作成可能枠を増やす
+          </button>
+        )}
       </div>
       <form class="project_settings" method="POST">
         <input type="hidden" name="action" value="create_project" />
         <div class="project_settings_wrapper">
           <label for="projectName">プロジェクト名</label>
-          <input type="text" name="projectName" required />
+          <input 
+            type="text" 
+            name="projectName" 
+            required 
+            disabled={planName === "free" && projects.length >= 1} 
+          />
         </div>
         <div class="project_settings_wrapper">
           <label for="projectDescription">プロジェクトの説明</label>
@@ -469,11 +508,16 @@ if (method === "POST") {
             name="projectDescription"
             rows="4"
             placeholder="どんなプロジェクトか説明してください"
+            disabled={planName === "free" && projects.length >= 1}
           ></textarea>
         </div>
         <div class="project_settings_btns">
           <span class="close" id="close-modal">閉じる</span>
-          <button class="create" type="submit">作成</button>
+          {(planName === "free" && projects.length >= 1) ? (
+            <button class="create disabled" type="button" disabled>作成できません</button>
+          ) : (
+            <button class="create" type="submit">作成</button>
+          )}
         </div>
       </form>
     </div>
@@ -999,6 +1043,15 @@ if (method === "POST") {
 		font-size: var(--font-size-s);
 		color: var(--elem-font-color);
 	}
+
+  .upgrade-btn {
+    background-color: var(--accent2-bg-color, #7856ff) !important;
+  }
+  
+  .disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
 </style>
 
 <script client:load>
@@ -1116,6 +1169,24 @@ const deleteModal = document.getElementById("delete-confirm-modal");
       localStorage.setItem("formMode", "login");
       registerBox.classList.add("dis-none");
       loginBox.classList.remove("dis-none");
+    });
+  }
+
+  // proプランへのアップグレードボタンの処理
+  const upgradePlanBtn = document.getElementById("upgrade-plan-btn");
+  const upgradeBtnModal = document.getElementById("upgrade-btn-modal");
+  
+  if (upgradePlanBtn) {
+    upgradePlanBtn.addEventListener("click", () => {
+      // ここではプラン変更ページへのリダイレクトなど
+      window.location.href = "/upgrade-plan";
+    });
+  }
+  
+  if (upgradeBtnModal) {
+    upgradeBtnModal.addEventListener("click", () => {
+      modal.style.display = "none";
+      window.location.href = "/upgrade-plan";
     });
   }
 </script>
