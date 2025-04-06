@@ -2,31 +2,23 @@
 export const prerender = false;
 
 import Layout from "../../layouts/Layout.astro";
-import admin from "firebase-admin";
-import { v4 as uuidv4 } from "uuid";
+import PlanInfo from "../../components/dashboard/PlanInfo.astro";
+import ProjectsList from "../../components/dashboard/ProjectsList.astro";
+import DeleteModal from "../../components/dashboard/DeleteModal.astro";
+import CreateProjectModal from "../../components/dashboard/CreateProjectModal.astro";
 
-// =============================
-// Firebase Admin SDK の初期化
-// =============================
-if (!admin.apps.length) {
-  const serviceAccountStr =
-    process.env.FIREBASE_SERVICE_ACCOUNT || import.meta.env.FIREBASE_SERVICE_ACCOUNT;
-  if (serviceAccountStr) {
-    const serviceAccount = JSON.parse(serviceAccountStr);
-    admin.initializeApp({
-      credential: admin.credential.cert(serviceAccount),
-    });
-  } else {
-    console.warn("No Firebase service account found.");
-  }
+// Firebase認証とサービスのインポート
+import { getFirebaseAdmin } from "../../lib/firebase-admin";
+import { getUserData, getUserDataUsage, createProject, deleteProject } from "../../services/dashboardService";
+
+// URLパラメータからuserIdを取得
+const { userId } = Astro.params;
+
+if (!userId) {
+  return new Response("ユーザーIDが指定されていません", { status: 400 });
 }
 
-const adminAuth = admin.auth();
-const db = admin.firestore();
-
-// =============================
-// Cookie から token を取得
-// =============================
+// Cookie からトークンを取得
 const cookieHeader = Astro.request.headers.get("cookie") || "";
 const cookies = Object.fromEntries(
   cookieHeader.split("; ").filter(Boolean).map((c) => {
@@ -36,21 +28,16 @@ const cookies = Object.fromEntries(
 );
 const token = cookies["token"] || "";
 
-// =============================
-// URLパラメータ から userId を取得
-// =============================
-const { userId } = Astro.params;
-
-// =============================
-// ログイン状態チェック
-// =============================
+// トークンからユーザーIDを取得して認証チェック
+const { auth } = getFirebaseAdmin();
 let authUser = null;
-if (token) {
-  try {
-    authUser = await adminAuth.verifyIdToken(token);
-  } catch (err) {
-    console.error("IDトークンの検証に失敗しました", err);
+
+try {
+  if (token) {
+    authUser = await auth.verifyIdToken(token);
   }
+} catch (err) {
+  console.error("IDトークンの検証に失敗しました", err);
 }
 
 // ログインしていない or トークン無効 → トップへ
@@ -66,36 +53,19 @@ if (authUser.uid !== userId) {
   return new Response("アクセス権がありません", { status: 403 });
 }
 
-// =============================
-// Firestore からユーザーデータ取得
-// =============================
-let userData = null;
-const userRef = db.collection("users").doc(userId);
-const userSnap = await userRef.get();
-if (userSnap.exists) {
-  userData = userSnap.data();
-} else {
-  console.error("User data not found for:", userId);
-  return new Response(null, {
-    status: 303,
-    headers: { Location: "/" },
-  });
-}
+// ユーザーデータを取得（キャッシュ機能付き）
+const userData = await getUserData(userId);
+const dataUsage = await getUserDataUsage(userId);
 
-// =============================
-// プロジェクトやプラン情報
-// =============================
+// プロジェクトとプラン情報
 const projects = userData.projects || [];
 const planName = userData.plan || "free";
 
-// =============================
-// POSTメソッド時の処理
-// =============================
+// エラーメッセージ初期化
 let postError = "";
-let defaultFormMode = "login";
 
-const method = Astro.request.method.toUpperCase();
-if (method === "POST") {
+// POSTメソッド時の処理
+if (Astro.request.method === "POST") {
   const formData = await Astro.request.formData();
   const action = formData.get("action")?.toString() || "";
 
@@ -115,82 +85,18 @@ if (method === "POST") {
     const projectName = formData.get("projectName")?.toString() || "";
     const projectDescription = formData.get("projectDescription")?.toString() || "";
 
-    // フリープランで、すでに1つプロジェクトを持っている場合はエラー
-    if (planName === "free" && projects.length >= 1) {
-      postError = "フリープランでは1つまでしかプロジェクトを作成できません。プランをアップグレードしてください。";
+    if (!projectName) {
+      postError = "プロジェクト名を入力してください";
     } else {
-      // 仮: フォロワー数、ページ数、等の初期値
-      const newProject = {
-        id: uuidv4(),
-        name: projectName,
-        description: projectDescription,
-        followers: 0,
-        currentPages: 0,
-        maxPages: 3,
-        createdAt: new Date(),
-        ownerId: userId,
-        allTags: [],
-      };
-
-      try {
-        // Firestore の "users" ドキュメントに projects[] を push
-        const userSnap = await userRef.get();
-        if (userSnap.exists) {
-          const currentProjects = userSnap.data().projects || [];
-          currentProjects.push(newProject);
-          await userRef.update({ projects: currentProjects });
-
-          // (A) freeプランなら "projects" コレクションに新規ドキュメント＆サブコレクションを作成する
-          if (planName === "free") {
-            // たとえば "projects" コレクションにドキュメント作成
-            const projectDocRef = db.collection("projects").doc(newProject.id);
-
-            await projectDocRef.set({
-              userId,                 // 紐付け用
-              plan: planName,         // "free"
-              name: projectName,
-              description: projectDescription,
-              createdAt: new Date(),
-              allTags: [],
-              followers: 0,           // フォロワー数も保存する
-              maxFollowers: 100,      // 最大フォロワー数も追加（フリープランの制限として）
-              currentPages: 0,        // 現在のページ数も追加
-              maxPages: 3,            // 最大ページ数も追加
-              ownerId: userId,        // オーナーIDも保存
-            });
-
-            // blog / notice / contact のサブコレクションを "形だけ" 作りたいなら、
-            // それぞれ最低１つはドキュメントを追加する必要あり
-            await projectDocRef.collection("blog").doc("init").set({
-              title: "サンプルブログ",
-              content: "これは初期作成されたサンプル投稿です",
-              createdAt: new Date(),
-            });
-
-            await projectDocRef.collection("notice").doc("init").set({
-              title: "サンプルお知らせ",
-              content: "これは初期作成されたサンプルお知らせです",
-              createdAt: new Date(),
-            });
-
-            await projectDocRef.collection("contact").doc("init").set({
-              name: "Contactサンプル",
-              message: "お問い合わせフォームに送信された例・・・",
-              createdAt: new Date(),
-            });
-          }
-
-          // リダイレクト
-          return new Response(null, {
-            status: 303,
-            headers: { Location: `/${userId}` },
-          });
-        } else {
-          postError = "ユーザーデータが見つかりません";
-        }
-      } catch (err) {
-        console.error("[Create Project Error]", err);
-        postError = "プロジェクト作成に失敗しました";
+      const result = await createProject(userId, projectName, projectDescription, planName);
+      
+      if (result.success) {
+        return new Response(null, {
+          status: 303,
+          headers: { Location: `/${userId}` },
+        });
+      } else {
+        postError = result.error || "プロジェクト作成に失敗しました";
       }
     }
   }
@@ -204,34 +110,23 @@ if (method === "POST") {
     if (!projectId) {
       postError = "プロジェクトIDが指定されていません";
     } else if (typedName !== originalName) {
-      postError = "プロジェクト名が一致しません（server）。削除を中断しました。";
+      postError = "プロジェクト名が一致しません。削除を中断しました。";
     } else {
-      try {
-        const userSnap = await userRef.get();
-        if (userSnap.exists) {
-          // usersドキュメントの projects配列 から該当projectを除去
-          const currentProjects = userSnap.data().projects || [];
-          const updatedProjects = currentProjects.filter((p: any) => p.id !== projectId);
-          await userRef.update({ projects: updatedProjects });
-
-          // (任意) "projects" コレクション側のデータも削除するならここで
-          // 例: await db.collection("projects").doc(projectId).delete();
-
-          return new Response(null, {
-            status: 303,
-            headers: { Location: `/${userId}` },
-          });
-        } else {
-          postError = "ユーザーデータが見つかりません";
-        }
-      } catch (err) {
-        console.error("[Delete Project Error]", err);
-        postError = "プロジェクト削除に失敗しました";
+      const result = await deleteProject(userId, projectId);
+      
+      if (result.success) {
+        return new Response(null, {
+          status: 303,
+          headers: { Location: `/${userId}` },
+        });
+      } else {
+        postError = result.error || "プロジェクト削除に失敗しました";
       }
     }
   }
 }
 ---
+
 <Layout
   title="App Title"
   userId={userId}
@@ -250,283 +145,35 @@ if (method === "POST") {
       <span>{userData.displayName || "(No Name)"}</span>
     </p>
   </div>
+  
+  {/* プラン情報コンポーネント（フリープランの場合のみ表示） */}
   {planName === "free" && (
-    <div class="box first">
-      <div class="inner">
-        <div class="box_header">
-          <h2 class="box_header_label">フリープラン</h2>
-          <a href="/" class="box_header_btn">他のプランを見る</a>
-        </div>
-        <div class="box_plan-list">
-          <div class="box_plan-item">
-            <p class="box_plan-item_label">料金</p>
-            <div class="box_plan-item_contents">
-              <p class="box_plan-item_text">
-                <strong class="strong">無料</strong>
-              </p>
-              <div class="box_plan-item_bar">
-                <span class="box_plan-item_bar_elem"></span>
-              </div>
-            </div>
-          </div>
-          <div class="box_plan-item">
-            <p class="box_plan-item_label">プロジェクト数</p>
-            <div class="box_plan-item_contents">
-              <p class="box_plan-item_text">
-                <strong class="strong">{projects.length}</strong>
-                <span>/</span>
-                <span>3</span>
-              </p>
-              <div class="box_plan-item_bar">
-                <span class="box_plan-item_bar_elem"></span>
-              </div>
-            </div>
-          </div>
-          <div class="box_plan-item">
-            <p class="box_plan-item_label">総データ使用量</p>
-            <div class="box_plan-item_contents">
-              <p class="box_plan-item_text">
-                <strong class="strong">24</strong>
-                <span>GB</span>
-                <span>/</span>
-                <span>124</span>
-                <span>GB</span>
-              </p>
-              <div class="box_plan-item_bar">
-                <span class="box_plan-item_bar_elem"></span>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
+    <PlanInfo
+      planName={planName}
+      projectCount={projects.length}
+      dataUsage={dataUsage}
+    />
   )}
 
-  <div class="box">
-    <div class="inner">
-      <div class="box_header">
-        <h2 class="box_header_label">
-          <span>プロジェクト</span>
-          <span class="box_header_label_elem">{projects.length}</span>
-          <span>/</span>
-          <span>{planName === "free" ? 1 : 3}</span>
-        </h2>
-        
-        {/* フリープランで1つ以上のプロジェクトがある場合は「proプランでさらに作成」ボタンを表示 */}
-        {(planName === "free" && projects.length >= 1) ? (
-          <button id="upgrade-plan-btn" class="box_header_btn upgrade-btn">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <path
-                d="M18 12.998H13V17.998C13 18.2633 12.8946 18.5176 12.7071 18.7052C12.5196 18.8927 12.2652 18.998 12 18.998C11.7348 18.998 11.4804 18.8927 11.2929 18.7052C11.1054 18.5176 11 18.2633 11 17.998V12.998H6C5.73478 12.998 5.48043 12.8927 5.29289 12.7052C5.10536 12.5176 5 18.2633 5 11.998C5 11.7328 5.10536 11.4785 5.29289 11.2909C5.48043 11.1034 5.73478 10.998 6 10.998H11V5.99805C11 5.73283 11.1054 5.47848 11.2929 5.29094C11.4804 5.1034 11.7348 4.99805 12 4.99805C12.2652 4.99805 12.5196 5.1034 12.7071 5.29094C12.8946 5.47848 13 5.73283 13 5.99805V10.998H18C18.2652 10.998 18.5196 11.1034 18.7071 11.2909C18.8946 11.4785 19 11.7328 19 11.998C19 12.2633 18.8946 12.5176 18.7071 12.7052C18.5196 12.8927 18.2652 12.998 18 12.998Z"
-                fill="white"
-              />
-            </svg>
-            <p>proプランでさらに作成</p>
-          </button>
-        ) : (
-          <button id="open-modal" class="box_header_btn">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <path
-                d="M18 12.998H13V17.998C13 18.2633 12.8946 18.5176 12.7071 18.7052C12.5196 18.8927 12.2652 18.998 12 18.998C11.7348 18.998 11.4804 18.8927 11.2929 18.7052C11.1054 18.5176 11 18.2633 11 17.998V12.998H6C5.73478 12.998 5.48043 12.8927 5.29289 12.7052C5.10536 12.5176 5 18.2633 5 11.998C5 11.7328 5.10536 11.4785 5.29289 11.2909C5.48043 11.1034 5.73478 10.998 6 10.998H11V5.99805C11 5.73283 11.1054 5.47848 11.2929 5.29094C11.4804 5.1034 11.7348 4.99805 12 4.99805C12.2652 4.99805 12.5196 5.1034 12.7071 5.29094C12.8946 5.47848 13 5.73283 13 5.99805V10.998H18C18.2652 10.998 18.5196 11.1034 18.7071 11.2909C18.8946 11.4785 19 11.7328 19 11.998C19 12.2633 18.8946 12.5176 18.7071 12.7052C18.5196 12.8927 18.2652 12.998 18 12.998Z"
-                fill="white"
-              />
-            </svg>
-            <p>新しいプロジェクト</p>
-          </button>
-        )}
-      </div>
-      <div class="box_search">
-        <div class="box_search_wrapper">
-          <button>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
-              xmlns="http://www.w3.org/2000/svg"
-            >
-              <path
-                d="M16.893 16.92L19.973 20M19 11.5C19 13.4891 18.2098 15.3968 16.8033 16.8033C15.3968 18.2098 13.4891 19 11.5 19C9.51088 19 7.60322 18.2098 6.1967 16.8033C4.79018 15.3968 4 13.4891 4 11.5C4 9.51088 4.79018 7.60322 6.1967 6.1967C7.60322 4.79018 9.51088 4 11.5 4C13.4891 4 15.3968 4.79018 16.8033 6.1967C18.2098 7.60322 19 9.51088 19 11.5Z"
-                stroke="white"
-                stroke-width="1.5"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-              />
-            </svg>
-          </button>
-          <input type="text" placeholder="プロジェクトを検索" />
-        </div>
-      </div>
-      {projects.length > 0 ? (
-        <div class="box_project-list">
-          {projects.map((project: any) => (
-            <div class="box_project-item" data-project-id={project.id}>
-              <div class="box_project-item_img"></div>
-              <h3 class="box_project-item_name">{project.name}</h3>
-              <div class="box_project-item_right">
-                <div class="box_project-item_right_wrapper">
-                  <p class="box_project-item_right_wrapper_label">フォロワー数</p>
-                  <p class="box_project-item_right_wrapper_label value">
-                    <strong class="strong">{project.followers || 0}</strong>
-                    <span>人</span>
-                  </p>
-                </div>
-                <div class="box_project-item_right_wrapper">
-                  <p class="box_project-item_right_wrapper_label">ページ数</p>
-                  <p class="box_project-item_right_wrapper_label value">
-                    <strong class="strong">{project.currentPages || 0}</strong>
-                    <span>/</span>
-                    <span>{project.maxPages || 0}</span>
-                  </p>
-                </div>
-              </div>
-              <div class="form_item_btns">
-                {/*
-                  削除フォームなどを配置したければここに。
-                  今回は「元のindex.astro」と同様に、モーダル削除を使う想定。
-                */}
-                <button
-                  class="form_item_icon delete_confirm_btn"
-                  type="button"
-                  data-project-id={project.id}
-                  data-project-name={project.name}
-                  onClick={(e: { stopPropagation: () => any; }) => e.stopPropagation()}
-                >
-                  {/* アイコンSVG */}
-                  <svg width="16" height="16" viewBox="0 0 20 20"
-                    fill="none" xmlns="http://www.w3.org/2000/svg"
-                  >
-                    <path
-                      d="M8.33268 5.00033H11.666C11.666 4.5583 11.4904 4.13437 11.1779 3.82181C10.8653 3.50925 10.4414 3.33366 9.99935 3.33366C9.55732 3.33366 9.1334 3.50925 8.82084 3.82181C8.50828 4.13437 8.33268 4.5583 8.33268 5.00033ZM6.66602 5.00033C6.66602 4.11627 7.0172 3.26842 7.64233 2.6433C8.26745 2.01818 9.11529 1.66699 9.99935 1.66699C10.8834 1.66699 11.7313 2.01818 12.3564 2.6433C12.9815 3.26842 13.3327 4.11627 13.3327 5.00033H17.4993C17.7204 5.00033 17.9323 5.08812 18.0886 5.2444C18.2449 5.40068 18.3327 5.61265 18.3327 5.83366C18.3327 6.05467 18.2449 6.26663 18.0886 6.42291C17.9323 6.57919 17.7204 6.66699 17.4993 6.66699H16.7643L16.026 15.2837C15.955 16.1157 15.5743 16.8908 14.9592 17.4556C14.3441 18.0204 13.5394 18.3338 12.7043 18.3337H7.29435C6.45927 18.3338 5.65458 18.0204 5.03947 17.4556C4.42437 16.8908 4.04366 16.1157 3.97268 15.2837L3.23435 6.66699H2.49935C2.27834 6.66699 2.06637 6.57919 1.91009 6.42291C1.75381 6.26663 1.66602 6.05467 1.66602 5.83366C1.66602 5.61265 1.75381 5.40068 1.91009 5.2444C2.06637 5.08812 2.27834 5.00033 2.49935 5.00033H6.66602Z"
-                      fill="#C4C4C4"
-                    />
-                  </svg>
-                </button>
-                <button class="form_item_btn">
-                  {/* 目アイコンなど */}
-                  <svg width="16" height="16" viewBox="0 0 16 16"
-                    fill="none" xmlns="http://www.w3.org/2000/svg"
-                  >
-                    <g clip-path="url(#clip0_623_115)">
-                      <path
-                        fill-rule="evenodd"
-                        clip-rule="evenodd"
-                        d="M10.4712 7.52879C10.5962 7.65381 10.6664 7.82334 10.6664 8.00012C10.6664 8.1769 10.5962 8.34644 10.4712 8.47145L6.6999 12.2428C6.63841 12.3065 6.56484 12.3572 6.48351 12.3922C6.40217 12.4271 6.31469 12.4455 6.22617 12.4463C6.13765 12.4471 6.04986 12.4302 5.96793 12.3967C5.886 12.3631 5.81157 12.3136 5.74897 12.251C5.68638 12.1885 5.63688 12.114 5.60336 12.0321C5.56983 11.9502 5.55297 11.8624 5.55374 11.7739C5.55451 11.6853 5.5729 11.5979 5.60784 11.5165C5.64277 11.4352 5.69356 11.3616 5.75724 11.3001L9.05724 8.00012L5.75724 4.70012C5.6358 4.57439 5.5686 4.40598 5.57012 4.23119C5.57164 4.05639 5.64175 3.88918 5.76536 3.76557C5.88896 3.64197 6.05617 3.57186 6.23097 3.57034C6.40577 3.56882 6.57417 3.63601 6.6999 3.75745L10.4712 7.52879Z"
-                        fill="white"
-                      />
-                    </g>
-                    <defs>
-                      <clipPath id="clip0_623_115">
-                        <rect width="16" height="16" fill="white" />
-                      </clipPath>
-                    </defs>
-                  </svg>
-                </button>
-              </div>
-            </div>
-          ))}
-        </div>
-      ) : (
-        <p class="no-projects">プロジェクトを作成し、あなただけのwebサイトを作ろう！</p>
-      )}
-    </div>
-  </div>
+  {/* プロジェクトリストコンポーネント */}
+  <ProjectsList
+    projects={projects}
+    planName={planName}
+  />
 
-  {/*
-    3) ログアウトボタン
-  */}
-  <form method="POST">
+  {/* ログアウトフォーム */}
+  <form method="POST" class="logout-form">
     <input type="hidden" name="action" value="logout" />
-    <button type="submit">ログアウト</button>
+    <button type="submit" class="logout-button">ログアウト</button>
   </form>
 
-  {/*
-    4) プロジェクト削除モーダル
-  */}
-  <div id="delete-confirm-modal" class="modal" style="display: none;">
-    <div class="modal-content">
-      <div class="modal_header">
-        <h2 class="modal_header_title">プロジェクトを削除</h2>
-        <p class="modal_header_desc">下の記入欄にプロジェクト名を入力してください</p>
-      </div>
-      <form class="delete_project_form" method="POST">
-        <input type="hidden" name="action" value="delete_project" />
-        <input type="hidden" name="projectId" id="deleteProjectId" />
-        <input type="hidden" name="originalProjectName" id="deleteOriginalName" />
-        <div class="project_settings_wrapper">
-          <label for="confirmProjectName">プロジェクト名</label>
-          <input
-            type="text"
-            name="confirmProjectName"
-            id="confirmProjectNameInput"
-            placeholder="プロジェクト名を入力"
-            required
-          />
-        </div>
-        <div class="project_settings_btns">
-          <span class="close" id="delete-cancel-btn">やめる</span>
-          <button class="delete" type="submit" id="delete-submit-btn">
-            削除
-          </button>
-        </div>
-      </form>
-    </div>
-  </div>
-
-  {/*
-    5) 新規プロジェクト作成モーダル
-  */}
-  <div id="project-modal" class="modal" style="display: none;">
-    <div class="modal-content">
-      <div class="modal_header">
-        <h2 class="modal_header_title">新しくプロジェクトを作成</h2>
-        <p class="modal_header_desc">
-          {planName === "free" ? 
-            projects.length >= 1 ? "フリープランでの上限に達しています" : "あと1つ作成できます" :
-            `あと${3 - projects.length}つ作成できます`}
-        </p>
-        {(planName === "free" && projects.length >= 1) ? (
-          <button class="upgrade_btn" id="upgrade-btn-modal">
-            アップグレードして作成可能枠を増やす
-          </button>
-        ) : (
-          <button class="upgrade_btn">
-            アップグレードして作成可能枠を増やす
-          </button>
-        )}
-      </div>
-      <form class="project_settings" method="POST">
-        <input type="hidden" name="action" value="create_project" />
-        <div class="project_settings_wrapper">
-          <label for="projectName">プロジェクト名</label>
-          <input 
-            type="text" 
-            name="projectName" 
-            required 
-            disabled={planName === "free" && projects.length >= 1} 
-          />
-        </div>
-        <div class="project_settings_wrapper">
-          <label for="projectDescription">プロジェクトの説明</label>
-          <textarea
-            name="projectDescription"
-            rows="4"
-            placeholder="どんなプロジェクトか説明してください"
-            disabled={planName === "free" && projects.length >= 1}
-          ></textarea>
-        </div>
-        <div class="project_settings_btns">
-          <span class="close" id="close-modal">閉じる</span>
-          {(planName === "free" && projects.length >= 1) ? (
-            <button class="create disabled" type="button" disabled>作成できません</button>
-          ) : (
-            <button class="create" type="submit">作成</button>
-          )}
-        </div>
-      </form>
-    </div>
-  </div>
+  {/* モーダルコンポーネント */}
+  <DeleteModal />
+  <CreateProjectModal planName={planName} projectsCount={projects.length} />
 </Layout>
 
-
 <style lang="scss">
-.pan{
+  .pan{
     margin-top: 8px;
     
     &_item{
@@ -541,652 +188,24 @@ if (method === "POST") {
       }
     }
   }
-
-  .modal {
-    position: fixed;
-    z-index: 1000;
-    left: 0;
-    top: 0;
-    width: 100%;
-    height: 100%;
-    overflow: auto;
-    background-color: rgba(35, 35, 36, 0.8);
+  
+  .logout-form {
+    margin-top: 40px;
+    text-align: center;
   }
-  .modal-content {
-    width: 100%;
-    max-width: 760px;
-		margin: 12% auto;
-		padding: 24px;
+  
+  .logout-button {
+    padding: 12px 24px;
+    background-color: var(--btn-bg-color);
+    color: var(--main-font-color);
     border: 1px solid var(--main-border-color);
     border-radius: var(--border-radius-m);
-		background-color: var(--sub-bg-color);
-  }
-
-	.modal_header{
-		display: flex;
-		align-items: center;
-
-		&_title{
-			font-size: var(--font-size-m);
-			color: var(--main-font-color);
-		}
-
-		&_desc{
-			font-size: var(--font-size-xs);
-			color: var(--elem-font-color);
-			margin-left: 16px;
-		}
-
-		>.upgrade_btn{
-			display: flex;
-			align-items: center;
-			justify-content: center;
-			font-size: var(--font-size-xs);
-			color: var(--sub-font-color);
-			margin-left: auto;
-			text-decoration: underline;
-		}
-	}
-
-  .delete_project_form{
-    margin-top: 16px;
-    padding-top: 24px;
-    border-top: 1px solid var(--main-border-color);
-  }
-
-	.project_settings{
-		margin-top: 16px;
-		padding-top: 32px;
-		border-top: 1px solid var(--main-border-color);
-
-		&_wrapper{
-			display: flex;
-			flex-direction: column;
-			gap: 16px;
-
-			&:nth-of-type(2){
-				margin-top: 24px;
-			}
-
-			>label{
-				font-size: var(--font-size-s);
-				color: var(--sub-font-color);
-			}
-
-			>input{
-				padding: 16px;
-				border: 1px solid var(--main-border-color);
-				background-color: var(--item-bg-color);
-				border-radius: var(--border-radius-m);
-				font-size: var(--font-size-s);
-				color: var(--main-font-color);
-			}
-
-			>textarea{
-				padding: 16px;
-				border: 1px solid var(--main-border-color);
-				background-color: var(--item-bg-color);
-				border-radius: var(--border-radius-m);
-				font-size: var(--font-size-s);
-				color: var(--main-font-color);
-			}
-		}
-
-		&_btns{
-			margin-top: 40px;
-			display: flex;
-			align-items: center;
-			justify-content: right;
-			gap: 16px;
-
-			>span,button{
-				padding: 12px 16px;
-				border-radius: var(--border-radius-m);
-				border: 1px solid var(--main-border-color);
-				font-size: var(--font-size-xs);
-				color: var(--main-font-color);
-				cursor: pointer;
-			}
-		
-			>.create{
-				background-color: var(--accent-bg-color);
-			}
-
-			>.delete{
-				background-color: var(--delete-bg-color);
-			}
-		}
-	}
-
-
-  .auth_box{
-		position: relative;
-    width: calc(100% - 48px);
-		max-width: 800px;
-    margin-inline: auto;
-    margin-top: 64px;
-
-		&_title{
-			font-size: var(--font-size-xl);
-			color: var(--main-font-color);
-			font-weight: 500;
-			padding-bottom: 16px;
-			border-bottom: 1px solid var(--main-border-color);
-			// width: 160px;
-			// display: flex;
-			// justify-content: center;
-			// padding: 12px 16px;
-			// background-color: var(--item-bg-color);
-		}
-
-		&_change{
-			// position: absolute;
-			// left: 0;
-			// bottom: 0;
-			display: flex;
-			align-items: center;
-			gap: 8px;
-			// margin-top: 40px;
-			// margin-left: auto;
-			padding: 16px 16px;
-			color: var(--main-font-color);
-			font-size: var(--font-size-xs);
-			border-radius: var(--border-radius-m);
-			border: 1px solid var(--main-border-color);
-
-			&_right{
-				font-size: var(--font-size-xxs);
-				color: var(--sub-font-color);
-			}
-		}
-  }
-
-	.form{
-		margin-top: 40px;
-		width: 100%;
-		// max-width: 800px;
-		margin-inline: auto;
-		display: flex;
-		flex-direction: column;
-		gap: 40px;
-
-		&_wrapper{
-		}
-
-		&_label{
-			font-size: var(--font-size-s);
-			color: var(--sub-font-color);
-		}
-		&_input{
-			margin-top: 16px;
-			padding: 16px 16px;
-			width: 100%;
-			// background-color: #fff;
-			background-color: var(--item-bg-color);
-			border-radius: var(--border-radius-m);
-			border: 1px solid var(--main-border-color);
-			font-size: var(--font-size-s);
-		}
-
-		&_btn-wrapper{
-			margin-top: 24px;
-			display: flex;
-			align-items: center;
-			justify-content: space-between;
-		}
-		&_btn{
-			// align-self: center;
-			padding: 16px 40px;
-			background-color: var(--accent-bg-color);
-			color: var(--main-font-color);
-			font-size: var(--font-size-s);
-			border-radius: var(--border-radius-m);
-		}
-	}
-
-	.box{
-		width: 100%;
-		background-color: var(--sub-bg-color);
-		border: 1px solid var(--main-border-color);
-		border-radius: var(--border-radius-m);
-		margin-top: 16px;
-
-		&.first {
-			// margin-top: 16px;
-		}
-
-		>.inner{
-			padding: 16px;
-		}
-
-		&_header{
-			display: flex;
-			align-items: center;
-			justify-content: space-between;
-
-			&_label{
-				font-size: var(--font-size-s);
-				color: var(--sub-font-color);
-				font-weight: 500;
-
-				&_elem{
-					margin-left: 8px;
-				}
-			}
-			&_btn{
-				display: flex;
-				align-items: center;
-				gap: 8px;
-				padding: 12px 16px;
-				border-radius: var(--border-radius-s);
-				background-color: var(--accent-bg-color);
-				color: var(--main-font-color);
-				font-size: var(--font-size-xxs);
-			}
-		}
-
-		&_plan-{
-
-			&list{
-				height: 96px;
-				margin-top: 16px;
-				display: grid;
-				grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
-				gap: 16px;
-			}
-			&item{
-				display: flex;
-				flex-direction: column;
-				align-items: center;
-				padding: 12px;
-				background-color: var(--item-bg-color);
-				border: 1px solid var(--main-border-color);
-				border-radius: var(--border-radius-m);
-				&_label{
-					font-size: var(--font-size-xs);
-					color: var(--sub-font-color);
-				}
-				&_contents{
-					width: 100%;
-					display: flex;
-					flex: 1;
-					gap: 12px;
-					margin-top: 12px;
-					flex-direction: column;
-					align-items: center;
-					justify-content: center;
-				}
-				&_text{
-					font-size: var(--font-size-xs);
-					color: var(--main-font-color);
-					>.strong{
-						font-weight: 500;
-						font-size: var(--font-size-m);
-					}
-				}
-				&_bar{
-					position: relative;
-					width: 100%;
-					height: 8px;
-					background-color: var(--elem-bg-color);
-					border-radius: 100px;
-					&_elem{
-						position: absolute;
-						width: 30%;
-						height: 100%;
-						background-color: var(--accent2-bg-color);
-						border-radius: 100px;
-						z-index: 10;
-					}
-				}
-			}
-		}
-
-		&_search{
-			margin-top: 16px;
-			display: flex;
-			align-items: center;
-
-			&_wrapper{
-				display: flex;
-				align-items: center;
-				gap: 8px;
-				padding: 8px 16px;
-				border: 1px solid var(--sub-border-color);
-				border-radius: var(--border-radius-m);
-				
-				>button{
-					display: flex;
-					align-items: center;
-					justify-content: center;
-					border-radius: var(--border-radius-s);
-					width: 24px;
-					height: 24px;
-					transition: all .1s;
-
-					&:hover{
-						background-color: var(--btn-bg-color);
-						transition: all .1s;
-					}
-				}
-				>input{
-					height: 100%;
-				  font-size: var(--font-size-s);
-					color: var(--main-font-color);
-			  }
-			}
-		}
-
-		&_project-{			
-
-			&list{
-			  margin-top: 24px;
-			  width: 100%;
-			  display: flex;
-			  flex-direction: column;
-			  gap: 8px;
-		  }
-			&item{
-				position: relative;
-				width: 100%;
-				display: flex;
-				align-items: center;
-				padding: 12px;
-				border-radius: var(--border-radius-m);
-				cursor: pointer;
-				transition: all .3s;
-				
-				&:hover{
-					background-color: var(--item-bg-color);
-					transition: all .3s;
-				}
-
-				&_img{
-					aspect-ratio: 16/9;
-					width: 114px;
-					background-color: var(--elem-bg-color);
-					border-radius: var(--border-radius-s);
-				}
-				&_name{
-					// flex: 1;
-					margin-left: 16px;
-					font-size: var(--font-size-s);
-					color: var(--main-font-color);
-				}
-				&_right{
-					flex: 1;
-					position: relative;
-					display: flex;
-					align-items: center;
-					gap: 16px;
-					margin-left: 16px;
-					padding-left: 16px;
-					
-					&::before{
-						content: "";
-						position: absolute;
-						left: 0;
-						width: 1px;
-						height: 16px;
-						background-color: var(--sub-border-color);
-					}
-
-					&_wrapper{
-						display: flex;
-						align-items: center;
-						gap: 8px;
-
-						>.value{
-							background-color: var(--btn-bg-color);
-							padding: 8px 8px;
-							border-radius: var(--border-radius-s);
-						}
-
-						&_label{
-							font-size: var(--font-size-xxs);
-					  	color: var(--sub-font-color);
-							font-weight: 400;
-							>.strong{
-								font-size: var(--font-size-xs);
-								font-weight: 400;
-							}
-					  }
-					}
-				}
-			}
-		}
-	}
-
-	.form{
-
-		flex: 1;
-		margin-left: auto;
-
-    &_list{
-    	margin-top: 24px;
-    	display: flex;
-    	flex-direction: column;
-    	gap: 8px;
-    }
-
-    &_item{
-    	display: flex;
-    	align-items: center;
-    	gap: 16px;
-    	padding: 16px 16px;
-    	border-radius: var(--border-radius-m);
-    	background-color: var(--sub-bg-color);
-    	cursor: pointer;
-
-	    &_body{
-	    	flex: 1;
-	    	overflow: hidden;
-	    }
-
-	    &_info{
-	    	margin-bottom: 24px;
-	    	display: flex;
-	    	align-items: center;
-	    	gap: 16px;
-    
-	    	>.slash{
-	    		width: 1px;
-	    		height: 12px;
-	    		background-color: var(--sub-border-color);
-	    	}
-    
-	    	&_item{
-	    		color: var(--sub-font-color);
-	    		font-size: var(--font-size-xs);
-	    	}
-	    }
-
-	    &_btns{
-	    	display: flex;
-	    	align-items: center;
-	    	gap: 8px;
-    
-	    	>button{
-	    		display: flex;
-	    		align-items: center;
-	    		justify-content: center;
-	    		width: 32px;
-	    		height: 32px;
-	    		border-radius: var(--border-radius-s);
-	    	}
-	    }
-
-	    &_icon{
-	    	background-color: var(--btn-bg-color);
-	    	border: 1px solid var(--main-border-color);
-	    }
-
-			&_btn{
-				width: 20px;
-				height: 20px;
-				// opacity: 0;
-			}
-    }
-  }
-
-	.dis-none{
-		display: none;
-	}
-	.dis-block{
-		display: block;
-	}
-
-	.no-projects{
-		margin-top: 24px;
-		padding: 40px 0 64px;
-		text-align: center;
-		font-size: var(--font-size-s);
-		color: var(--elem-font-color);
-	}
-
-  .upgrade-btn {
-    background-color: var(--accent2-bg-color, #7856ff) !important;
+    font-size: var(--font-size-s);
+    cursor: pointer;
+    transition: all 0.2s;
   }
   
-  .disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
+  .logout-button:hover {
+    background-color: var(--item-bg-color);
   }
 </style>
-
-<script client:load>
-	
-	document.querySelectorAll('.box_project-item').forEach((item) => {
-    item.addEventListener('click', (event) => {
-
-			const projectId = item.getAttribute('data-project-id');
-			window.location.href = '/projects/' + projectId;
-    });
-  });
-
-  const iconButtons = document.querySelectorAll('.form_item_icon, .form_item_btn');
-  iconButtons.forEach((btn) => {
-    btn.addEventListener('click', (event) => {
-      // 親要素へのクリックを伝搬しない＝カードのクリックイベントをキャンセル
-      event.stopPropagation();
-
-      // TODO: 実際の削除処理やお気に入り処理などはここで行う
-      console.log('アイコンボタンがクリックされました！');
-    });
-  });
-
-const deleteModal = document.getElementById("delete-confirm-modal");
-  const deleteCancelBtn = document.getElementById("delete-cancel-btn");
-  const deleteSubmitBtn = document.getElementById("delete-submit-btn");
-  const deleteProjectIdInput = document.getElementById("deleteProjectId");
-  const deleteOriginalNameInput = document.getElementById("deleteOriginalName");
-  const confirmProjectNameInput = document.getElementById("confirmProjectNameInput");
-
-  const deleteConfirmBtns = document.querySelectorAll(".delete_confirm_btn");
-  deleteConfirmBtns.forEach((btn) => {
-    btn.addEventListener("click", (event) => {
-      // クリックされたプロジェクトの情報を取得
-      const projectId = btn.getAttribute("data-project-id");
-      const projectName = btn.getAttribute("data-project-name");
-
-      // hidden input に値を反映
-      deleteProjectIdInput.value = projectId;
-      deleteOriginalNameInput.value = projectName;
-      confirmProjectNameInput.value = "";
-
-      // モーダルを表示
-      deleteModal.style.display = "block";
-    });
-  });
-
-  deleteCancelBtn.addEventListener("click", () => {
-    deleteModal.style.display = "none";
-  });
-
-  window.addEventListener("click", (e) => {
-    if (e.target === deleteModal) {
-      deleteModal.style.display = "none";
-    }
-  });
-
-  deleteSubmitBtn.addEventListener("click", (e) => {
-    const typedName = confirmProjectNameInput.value.trim();
-    const originalName = deleteOriginalNameInput.value.trim();
-
-    if (!typedName || typedName !== originalName) {
-      e.preventDefault();
-      alert("プロジェクト名が一致しません（front）。削除できません。");
-    }
-  });
-
-
-  const modal = document.getElementById("project-modal");
-  const openModalBtn = document.getElementById("open-modal");
-  const closeModalSpan = document.getElementById("close-modal");
-  if (openModalBtn) {
-    openModalBtn.addEventListener("click", () => {
-      modal.style.display = "block";
-    });
-  }
-  if (closeModalSpan) {
-    closeModalSpan.addEventListener("click", () => {
-      modal.style.display = "none";
-    });
-  }
-  window.addEventListener("click", (e) => {
-    if (e.target === modal) {
-      modal.style.display = "none";
-    }
-  });
-
-  const defaultFormMode = "{defaultFormMode}";
-  const savedMode = localStorage.getItem("formMode") || defaultFormMode;
-  localStorage.setItem("formMode", savedMode);
-
-  const loginBox = document.getElementById("auth_box_login");
-  const registerBox = document.getElementById("auth_box_register");
-  const toRegisterBtn = document.getElementById("auth_box_change_to_register");
-  const toLoginBtn = document.getElementById("auth_box_change_to_login");
-
-
-  if (savedMode === "register") {
-    loginBox.classList.add("dis-none");
-    registerBox.classList.remove("dis-none");
-  } else {
-    registerBox.classList.add("dis-none");
-    loginBox.classList.remove("dis-none");
-  }
-
-  if (toRegisterBtn) {
-    toRegisterBtn.addEventListener("click", () => {
-      localStorage.setItem("formMode", "register");
-      loginBox.classList.add("dis-none");
-      registerBox.classList.remove("dis-none");
-    });
-  }
-  if (toLoginBtn) {
-    toLoginBtn.addEventListener("click", () => {
-      localStorage.setItem("formMode", "login");
-      registerBox.classList.add("dis-none");
-      loginBox.classList.remove("dis-none");
-    });
-  }
-
-  // proプランへのアップグレードボタンの処理
-  const upgradePlanBtn = document.getElementById("upgrade-plan-btn");
-  const upgradeBtnModal = document.getElementById("upgrade-btn-modal");
-  
-  if (upgradePlanBtn) {
-    upgradePlanBtn.addEventListener("click", () => {
-      // ここではプラン変更ページへのリダイレクトなど
-      window.location.href = "/upgrade-plan";
-    });
-  }
-  
-  if (upgradeBtnModal) {
-    upgradeBtnModal.addEventListener("click", () => {
-      modal.style.display = "none";
-      window.location.href = "/upgrade-plan";
-    });
-  }
-</script>

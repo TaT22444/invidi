@@ -1,0 +1,60 @@
+<script>
+  // すべてのチャートコンテナを検索して初期化
+  document.addEventListener('DOMContentLoaded', () => {
+    // 共通レンダリングスクリプトをインポート
+    import('/src/scripts/chart-renderer.js')
+      .then(module => {
+        const { renderChart } = module;
+        
+        const chartContainers = document.querySelectorAll('[data-chart-id]');
+        
+        chartContainers.forEach(container => {
+          try {
+            // データ属性からチャート情報を取得
+            const chartId = container.getAttribute('data-chart-id');
+            const chartTitle = container.getAttribute('data-chart-title');
+            const chartColor = container.getAttribute('data-chart-color');
+            const labelsData = container.getAttribute('data-chart-labels');
+            const pointsData = container.getAttribute('data-chart-data');
+            
+            // データをパース
+            let labels = [];
+            let dataPoints = [];
+            
+            try {
+              labels = JSON.parse(labelsData || '[]');
+              dataPoints = JSON.parse(pointsData || '[]');
+            } catch (e) {
+              console.error(`チャート[${chartId}]: データパースエラー`, e);
+              // フォールバックデータ
+              labels = ["1日目", "2日目", "3日目", "4日目", "5日目", "6日目", "7日目"];
+              dataPoints = [10, 25, 15, 30, 45, 20, 35];
+            }
+            
+            // 共通関数を使用してチャートをレンダリング
+            renderChart(`chart-${chartId}`, labels, dataPoints, chartTitle, chartColor)
+              .then(() => console.log(`チャート[${chartId}] 初期化完了`))
+              .catch(error => {
+                console.error(`チャート[${chartId}] 初期化エラー:`, error);
+                container.innerHTML = `
+                  <div class="chart-error">
+                    <p>グラフを読み込めませんでした</p>
+                    <p>${error.message}</p>
+                  </div>
+                `;
+              });
+          } catch (error) {
+            console.error('チャート初期化エラー:', error);
+            container.innerHTML = `
+              <div class="chart-error">
+                <p>グラフの初期化に失敗しました</p>
+              </div>
+            `;
+          }
+        });
+      })
+      .catch(error => {
+        console.error('チャートレンダリングモジュールのロードに失敗:', error);
+      });
+  });
+</script> 

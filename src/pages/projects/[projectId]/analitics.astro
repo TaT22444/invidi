@@ -5,167 +5,30 @@ import "../../../styles/cms.css"
 import Layout from "../../../layouts/Layout.astro";
 import MyLineChart from "../../../components/MyLineChart.jsx";
 import PerformanceChart from "../../../components/PerformanceChart.jsx";
-import Blog from "../../../components/Blog.astro";
-import Notice from "../../../components/Notice.astro";
 import ProjectNav from "../../../components/ProjectNav.astro";
 
-// ◆ Firebase Admin SDK のインポート
-import admin from "firebase-admin";
-import { initializeApp, cert, getApps, getApp } from "firebase-admin/app";
-import { getStorage } from "firebase-admin/storage";
+// ◆ 最適化: リファクタリング後のコンポーネントをインポート
+import AnalyticsNav from "../../../components/analytics/AnalyticsNav.astro";
+import PeriodSelector from "../../../components/analytics/PeriodSelector.astro";
+import StatsSummary from "../../../components/analytics/StatsSummary.astro";
+import PerformanceMetrics from "../../../components/analytics/PerformanceMetrics.astro";
 
-// ユーティリティ関数をインポート
-import { 
-  createPlaceholder, 
-  setupPlaceholderEvents, 
-  createTemplateNotification,
-  addTemplateContent,
-  initializeEditableElement,
-  initializeDeleteButton
-} from '../../../utils/blogUtils.js';
+// ◆ 最適化: サービスレイヤーのインポート
+import { getUserFromRequest } from '../../../services/authService';
+import { getProjectData } from '../../../services/projectService';
+import { getProjectStatistics, getProjectStatisticsSummary } from '../../../services/analyticsService';
 
-function formatCreatedAt(createdAt: string | number | Date) {
-  if (!createdAt) return "日付未設定";
-
-  // Firestore Timestamp の場合 → createdAt.toDate() で JS Date に変換
-  // すでに JS Date の場合はそのまま使う
-  const dateObj = createdAt.toDate ? (createdAt as any).toDate() : new Date(createdAt);
-
-  const year = dateObj.getFullYear();
-  const month = String(dateObj.getMonth() + 1).padStart(2, "0");
-  const day = String(dateObj.getDate()).padStart(2, "0");
-  const hour = String(dateObj.getHours()).padStart(2, "0");
-  const minute = String(dateObj.getMinutes()).padStart(2, "0");
-
-  return `${year}-${month}-${day} ${hour}:${minute}`;
-}
-
-
-// ----------------------
-// ▼ (1) Firebase Admin の初期化
-// ----------------------
-
-function getFirebaseApp() {
-  if (!getApps().length) {
-    initializeApp({
-      credential: cert(JSON.parse(import.meta.env.FIREBASE_SERVICE_ACCOUNT)),
-      storageBucket: import.meta.env.FIREBASE_STORAGE_BUCKET, // 環境変数から正しいバケット名を設定
-    });
-  }
-  return getApp();
-}
-
-async function uploadImageToStorage(file: File, projectId: string, userId: string, uploadType: "user" | "blog") {
-  if (!file || typeof file.name !== "string" || file.size <= 0) {
-    throw new Error("無効なファイルです。");
-  }
-
-  // Firebaseアプリを取得
-  const app = getFirebaseApp();
-  const bucket = getStorage(app).bucket(import.meta.env.FIREBASE_STORAGE_BUCKET);
-  if (!bucket.name) {
-    throw new Error("バケット名が設定されていません。環境変数 FIREBASE_STORAGE_BUCKET を確認してください。");
-  }
-
-  console.log("✅ Firebase Storage バケット:", bucket.name);
-
-  // **アップロード先のフォルダを uploadType に応じて選択**
-  let folderPath = `projects/${projectId}/`;
-  if (uploadType === "user") {
-    folderPath += `users/${userId}/`;
-  } else if (uploadType === "blog") {
-    folderPath += `blogThumbnails/`;
-  }
-
-  // ファイル名を生成
-  const ext = file.name.split(".").pop();
-  const fileName = `${folderPath}${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
-
-  // arrayBuffer を Buffer に変換
-  const arrayBuffer = await file.arrayBuffer();
-  const buffer = Buffer.from(arrayBuffer);
-
-  const fileRef = bucket.file(fileName);
-  await fileRef.save(buffer, {
-    contentType: file.type,
-    public: true,
-    metadata: {
-      contentType: file.type,
-      customMetadata: {
-        projectId,
-        userId,
-        uploadType, // "user" か "blog" かをメタデータに保存
-      },
-    },
-  });
-
-  await fileRef.makePublic();
-  return `https://storage.googleapis.com/${bucket.name}/${fileName}`;
-}
-
-
-
-if (!admin.apps.length) {
-  const serviceAccountStr =
-    process.env.FIREBASE_SERVICE_ACCOUNT || import.meta.env.FIREBASE_SERVICE_ACCOUNT;
-  console.log("Service Account:", serviceAccountStr);
-  if (serviceAccountStr) {
-    const serviceAccount = JSON.parse(serviceAccountStr);
-    const bucketName = import.meta.env.FIREBASE_STORAGE_BUCKET || "test-87192.firebasestorage.app";
-    admin.initializeApp({
-      credential: admin.credential.cert(serviceAccount),
-      storageBucket: bucketName,
-    });
-  } else {
-    console.warn("No Firebase service account found.");
-  }
-}
-
-const adminAuth = admin.auth();
-const db = admin.firestore();
-
-// ----------------------
-// ▼ (2) Cookie から token を取り出し、ユーザーのログイン情報を確認
-// ----------------------
-const cookieHeader = Astro.request.headers.get("cookie") || "";
-const cookies = Object.fromEntries(
-  cookieHeader.split("; ").filter(Boolean).map((c) => {
-    const [key, ...v] = c.split("=");
-    return [key, v.join("=")];
-  })
-);
-const token = cookies["token"] || "";
-
-let authUser = null;
-if (token) {
-  try {
-    // トークン検証オプションを調整（チェックフラグをfalseに）
-    const checkRevoked = false; // 取り消されたトークンかのチェックを無効化（7日間有効に）
-    authUser = await adminAuth.verifyIdToken(token, checkRevoked);
-  } catch (err) {
-    console.error("IDトークンの検証に失敗:", err);
-  }
-}
-
-// ----------------------
-// ▼ (3) Firestore からユーザーデータを取得
-// ----------------------
-let userData = null;
-if (authUser) {
-  const snap = await db.collection("users").doc(authUser.uid).get();
-  if (snap.exists) {
-    userData = snap.data();
-  }
-}
-
-// ----------------------
-// ▼ (4) URL パラメータから projectId を取得し、
-//       ユーザーが所有する projects[] の中から該当のプロジェクトを検索
-// ----------------------
+// ◆ 最適化: パラメータを取得
 const { projectId } = Astro.params;
+if (!projectId) {
+  return new Response("プロジェクトIDが指定されていません", { status: 400 });
+}
 
-// ユーザーが認証されているか確認
-if (!authUser || !userData) {
+// ◆ 最適化: 認証ユーザー情報の取得をserviceに委任
+const { user, error: authError } = await getUserFromRequest(Astro.request);
+
+// 認証エラーはリダイレクト
+if (authError || !user) {
   console.error("認証されていないユーザーです");
   return new Response(null, {
     status: 303,
@@ -173,14 +36,11 @@ if (!authUser || !userData) {
   });
 }
 
-// プロジェクトデータの取得（ユーザーのプロジェクト配列から）
-let currentProject = null;
-if (userData && userData.projects) {
-  currentProject = userData.projects.find((p: { id: any; }) => p.id === projectId);
-}
+// ◆ 最適化: プロジェクトデータの取得をserviceに委任
+const { project, error: projectError } = await getProjectData(projectId, user.uid);
 
-// プロジェクトがユーザーに属しているか確認
-if (!currentProject) {
+// プロジェクトが見つからない場合やアクセス権がない場合はリダイレクト
+if (projectError || !project) {
   console.error("該当のプロジェクトが見つかりません、またはアクセス権限がありません");
   return new Response(null, {
     status: 303,
@@ -188,119 +48,16 @@ if (!currentProject) {
   });
 }
 
-// ここからFirestoreからプロジェクトの追加データを取得
-try {
-  if (projectId) {
-    const projectDoc = await db.collection("projects").doc(projectId).get();
-    if (projectDoc.exists) {
-      const firestoreProject = projectDoc.data();
-      
-      // Firestoreのデータで現在のプロジェクトデータを拡張
-      if (firestoreProject) {
-        // nameフィールドは上書きせず、Firestoreからの他のデータを統合
-        const { name: _, ...firestoreDataWithoutName } = firestoreProject;
-        currentProject = {
-          ...currentProject,
-          ...firestoreDataWithoutName,
-          // siteNameがなければFirestoreから取得、それもなければnameを使用
-          siteName: currentProject.siteName || firestoreProject.siteName || currentProject.name
-        };
-      }
-    }
-  }
-} catch (error) {
-  console.error("Firestoreからの追加データ取得に失敗:", error);
-  // 追加データの取得に失敗しても、基本的なプロジェクトデータがあるので処理を続行
-}
+// ◆ 最適化: 統計サマリーデータの取得をserviceに委任
+const totalStats = await getProjectStatisticsSummary(projectId);
 
-const projectSnap = await db.collection("projects").doc(projectId).get();
-const projectData = projectSnap.data() || {};
-const existingBlogTags = projectData.blogTags || [];
-const existingNewsTags = projectData.newsTags || [];
-// ----------------------
-// ▼ (5) Layout.astro に渡すための accountName を作成
-// ----------------------
-const accountName =
-  authUser && userData && userData.displayName
-    ? userData.displayName
-    : "ログイン";
+// ◆ 最適化: デフォルト期間の統計データを取得
+const analyticsData = await getProjectStatistics(projectId, '1w');
 
-// ----------------------
-// ▼ (6) グラフ用データとサマリー用データを分けて定義
-// グラフ表示用の直近1週間のデータ
-const pvLabels = [
-  "2025/02/16",
-  "2025/02/17",
-  "2025/02/18",
-  "2025/02/19",
-  "2025/02/20",
-  "2025/02/21",
-  "2025/02/22",
-];
-
-const pvDatas = [100, 250, 150, 200, 100, 320, 180];
-const clickDatas = [20, 50, 30, 10, 40, 80, 60];
-const ctrDatas = pvDatas.map((pv, index) => 
-  pv > 0 ? Math.round((clickDatas[index] / pv) * 100) : 0
-);
-
-// サンプルの累計データ（Firebaseにデータがない場合のフォールバック用）
-const sampleTotalStats = {
-  displayCount: 15000,  // サンプルの総表示回数
-  clickCount: 3000,     // サンプルの総クリック数
-  get ctr() {
-    return this.displayCount > 0 
-      ? Math.round((this.clickCount / this.displayCount) * 100 * 10) / 10 
-      : 0;
-  }
-};
-
-// データベースから全期間の統計を取得（存在しない場合はサンプルデータを使用）
-const totalStatsSnapshot = await db.collection("projects")
-  .doc(projectId)
-  .collection("statistics")
-  .doc("total")
-  .get();
-
-const totalStats = totalStatsSnapshot.exists 
-  ? totalStatsSnapshot.data()
-  : sampleTotalStats; // サンプルデータを使用
-
-// EC関連データはそのまま
-const ecLabels = [
-  "2025/02/16",
-  "2025/02/17",
-  "2025/02/18",
-  "2025/02/19",
-  "2025/02/20",
-  "2025/02/21",
-  "2025/02/22",
-];
-const ecSalesData = [1800, 2000, 1200, 900, 2200, 1800, 2500];
-
-// ----------------------
-// ▼ (7) ページタイトル等を設定
-// ----------------------
-const pageTitle = "プロジェクト別ページ";
-
-// ----------------------
-// ▼ (8) 実際のページをレンダリング
-//     Layout には accountName を渡して
-//     ナビゲーションにユーザー名を表示できるようにする
-// ----------------------
-
-const userId = authUser?.uid || "";
-
-// データの最大値を計算する関数
-function calculateMaxValue(data: number[], margin: number = 1.2) {
-  const max = Math.max(...data);
-  return Math.ceil(max * margin / 10) * 10; // 10単位で切り上げ
-}
-
-// グラフ設定を動的に生成
+// ◆ 最適化: グラフ設定を動的に生成
 const graphConfig = {
-  maxDisplayCount: calculateMaxValue(pvDatas),
-  maxClickCount: calculateMaxValue(clickDatas),
+  maxDisplayCount: Math.ceil(Math.max(...analyticsData.chartData.displayData) * 1.2 / 10) * 10,
+  maxClickCount: Math.ceil(Math.max(...analyticsData.chartData.clickData) * 1.2 / 10) * 10,
   maxCtrPercent: 100, // CTRは固定で100%
   colors: {
     display: '#468FDD',
@@ -309,25 +66,27 @@ const graphConfig = {
   }
 };
 
-// グラフの表示状態の初期値を設定
+// ◆ 最適化: グラフの表示状態の初期値を設定
 const initialGraphState = {
   showDisplay: true,
   showClick: true,
   showCtr: true
 };
 
+// ◆ Layout.astro に渡すためのaccountNameを設定
+const accountName = user.displayName || "ログイン";
 ---
 
-<Layout title="Analitics" userId={userId} accountName={accountName} projects={userData?.projects ?? []}>
+<Layout title="アナリティクス" userId={user.uid} accountName={accountName} projects={user.projects || []}>
   <div class="pan">
     <p class="pan_item">
-      <a href={userId ? `/${userId}` : "/"}>トップ</a>
+      <a href={user.uid ? `/${user.uid}` : "/"}>トップ</a>
       <span>
         <svg width="7" height="7" viewBox="0 0 7 7" fill="none" xmlns="http://www.w3.org/2000/svg">
           <path d="M0.456 6.356V5.18L3.156 4.208L4.98 3.548V3.5L3.156 2.828L0.456 1.856V0.692L6.384 2.996V4.04L0.456 6.356Z" fill="#C4C4C4"/>
         </svg>          
       </span>
-      <span>{currentProject?.name || "(No Name)"}</span>
+      <span>{project.name || "(No Name)"}</span>
       <span>
         <svg width="7" height="7" viewBox="0 0 7 7" fill="none" xmlns="http://www.w3.org/2000/svg">
           <path d="M0.456 6.356V5.18L3.156 4.208L4.98 3.548V3.5L3.156 2.828L0.456 1.856V0.692L6.384 2.996V4.04L0.456 6.356Z" fill="#C4C4C4"/>
@@ -341,65 +100,18 @@ const initialGraphState = {
 
   <section class="ana-box">
     <div class="inner">
-      <nav class="tabs">
-        <ul class="tabs_list">
-          <li class="tabs_item">
-            <button class="tabs_btn active" data-tab="search-performance">検索パフォーマンス</button>
-          </li>
-          <li class="tabs_item">
-            <button class="tabs_btn" data-tab="users">ユーザー</button>
-          </li>
-          <li class="tabs_item">
-            <button class="tabs_btn" data-tab="blog">ブログ</button>
-          </li>
-          <li class="tabs_item">
-            <button class="tabs_btn" data-tab="search-ranking">検索ランキング</button>
-          </li>
-        </ul>
-      </nav>
-      <div class="tab_box">
-        <h2 class="tab_box_title">検索パフォーマンス</h2>
-        <p class="tab_box_desc">サイト内の表示回数、クリック数、CTRを表示します</p>
-        <div class="tab_box_cards">
-          <div class="tab_box_card">
-            <p>
-              <span class="tab_box_card_label">合計表示回数</span>
-              <strong class="tab_box_card_value">{totalStats.displayCount?.toLocaleString() ?? '0'}</strong>
-              <span class="tab_box_card_label">回</span>
-            </p>
-          </div>
-          <div class="tab_box_card">
-            <p>
-              <span class="tab_box_card_label">合計クリック回数</span>
-              <strong class="tab_box_card_value">{totalStats.clickCount?.toLocaleString() ?? '0'}</strong>
-              <span class="tab_box_card_label">回</span>
-            </p>
-          </div>
-          <div class="tab_box_card">
-            <p>
-              <span class="tab_box_card_label">総合CTR</span>
-              <strong class="tab_box_card_value">
-                {typeof totalStats.ctr === 'function' ? totalStats.ctr() : totalStats.ctr ?? 0}
-              </strong>
-              <span class="tab_box_card_label">%</span>
-            </p>
-          </div>
-        </div>
-      </div>
-      <div class="tab_options">
-        <button class="tab_option" data-period="24h">24時間</button>
-        <button class="tab_option active" data-period="1w">過去1週間</button>
-        <button class="tab_option" data-period="1m">過去1ヶ月</button>
-        <button class="tab_option" data-period="3m">過去3ヶ月</button>
-        <button class="tab_option" data-period="6m">過去6ヶ月</button>
-        <button class="tab_option" data-period="1y">過去12ヶ月</button>
-        <button class="tab_option_add">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <path d="M18 12.998H13V17.998C13 18.2633 12.8946 18.5176 12.7071 18.7052C12.5196 18.8927 12.2652 18.998 12 18.998C11.7348 18.998 11.4804 18.8927 11.2929 18.7052C11.1054 18.5176 11 18.2633 11 17.998V12.998H6C5.73478 12.998 5.48043 12.8927 5.29289 12.7052C5.10536 12.5176 5 12.2633 5 11.998C5 11.7328 5.10536 11.4785 5.29289 11.2909C5.48043 11.1034 5.73478 10.998 6 10.998H11V5.99805C11 5.73283 11.1054 5.47848 11.2929 5.29094C11.4804 5.1034 11.7348 4.99805 12 4.99805C12.2652 4.99805 12.5196 5.1034 12.7071 5.29094C12.8946 5.47848 13 5.73283 13 5.99805V10.998H18C18.2652 10.998 18.5196 11.1034 18.7071 11.2909C18.8946 11.4785 19 11.7328 19 11.998C19 12.2633 18.8946 12.5176 18.7071 12.7052C18.5196 12.8927 18.2652 12.998 18 12.998Z" fill="white"/>
-          </svg>
-          <p class="tab_option_add_label">期間を増やす</p>
-        </button>
-      </div>
+      <!-- ◆ 最適化: タブナビゲーションをコンポーネント化 -->
+      <AnalyticsNav projectId={projectId} activeTab="search-performance" />
+      
+      <!-- ◆ 最適化: 統計サマリーをコンポーネント化 -->
+      <StatsSummary 
+        displayCount={totalStats.displayCount} 
+        clickCount={totalStats.clickCount} 
+        ctr={totalStats.ctr} 
+      />
+      
+      <!-- ◆ 最適化: 期間選択UIをコンポーネント化 -->
+      <PeriodSelector activePeriod="1w" />
     </div>
   </section>
 
@@ -409,72 +121,25 @@ const initialGraphState = {
     <section class="contents">
       <div class="section_title_wrapper">
         <h3 class="section_title">サイト全体</h3>
-        <p class="section_period">過去1週間</p>
+        <p class="section_period">{analyticsData.periodLabel}</p>
       </div>
       <div class="box">
         <div class="inner">
-          <div class="wrapper">
-            <p class="graph_desc">パフォーマンス指標</p>
-            <div class="performance-metrics">
-              <div class="metric">
-                <label class="metric-toggle">
-                  <input type="checkbox" class="metric-checkbox" data-metric="display" checked>
-                  <span class="metric-indicator display-color"></span>
-                </label>
-                <span class="metric-label">表示回数:</span>
-                <span class="metric-value display-value">{pvDatas.reduce((sum, val) => sum + val, 0)}</span>
-              </div>
-              <div class="metric">
-                <label class="metric-toggle">
-                  <input type="checkbox" class="metric-checkbox" data-metric="click" checked>
-                  <span class="metric-indicator click-color"></span>
-                </label>
-                <span class="metric-label">クリック数:</span>
-                <span class="metric-value click-value">{clickDatas.reduce((sum, val) => sum + val, 0)}</span>
-              </div>
-              <div class="metric">
-                <label class="metric-toggle">
-                  <input type="checkbox" class="metric-checkbox" data-metric="ctr" checked>
-                  <span class="metric-indicator ctr-color"></span>
-                </label>
-                <span class="metric-label">CTR:</span>
-                <span class="metric-value ctr-value">
-                  {(() => {
-                    const totalDisplay = pvDatas.reduce((sum, val) => sum + val, 0);
-                    const totalClick = clickDatas.reduce((sum, val) => sum + val, 0);
-                    return totalDisplay > 0 ? `${(totalClick / totalDisplay * 100).toFixed(1)}%` : "0%";
-                  })()}
-                </span>
-              </div>
-            </div>
-          </div>
-          
-          <!-- 複合グラフの表示 -->
-          <div class="performance-chart">
-            <PerformanceChart
-              client:load
-              labels={pvLabels}
-              displayData={pvDatas}
-              clickData={clickDatas}
-              ctrData={ctrDatas}
-              displayColor={graphConfig.colors.display}
-              clickColor={graphConfig.colors.click}
-              ctrColor={graphConfig.colors.ctr}
-              height="300px"
-              maxY={graphConfig.maxDisplayCount}
-              maxY2={graphConfig.maxClickCount}
-              maxY1={graphConfig.maxCtrPercent}
-              showSeparateYAxis={true}
-              {...initialGraphState}
-            />
-          </div>
+          <!-- ◆ 最適化: パフォーマンスメトリクスをコンポーネント化 -->
+          <PerformanceMetrics 
+            labels={analyticsData.chartData.labels}
+            displayData={analyticsData.chartData.displayData}
+            clickData={analyticsData.chartData.clickData}
+            ctrData={analyticsData.chartData.ctrData}
+            period="1w"
+          />
         </div>
       </div>
     </section>
     <section class="contents">
       <div class="section_title_wrapper">
         <h3 class="section_title">ページごと</h3>
-        <p class="section_period">過去1週間</p>
+        <p class="section_period">{analyticsData.periodLabel}</p>
       </div>
       <div class="box">
         <div class="inner">
@@ -491,18 +156,18 @@ const initialGraphState = {
               <tbody>
                 <tr>
                   <td class="path-cell">
-                    トップページ / https://invidi.netlify.app/Kjs4b102h2arRfjN4kzvYhfO11N2https://invidi
+                    トップページ / https://invidi.netlify.app/{project.id}
                   </td>
-                  <td class="metric-cell">12</td>
                   <td class="metric-cell">120</td>
+                  <td class="metric-cell">12</td>
                   <td class="metric-cell">10%</td>
                 </tr>
                 <tr>
                   <td class="path-cell">
-                    トップページ / https://invidi.netlify.app/Kjs4b102h2arRfjN4kzvYhfO11N2https://invidi
+                    プロフィールページ / https://invidi.netlify.app/{project.id}/profile
                   </td>
-                  <td class="metric-cell">12</td>
-                  <td class="metric-cell">120</td>
+                  <td class="metric-cell">80</td>
+                  <td class="metric-cell">8</td>
                   <td class="metric-cell">10%</td>
                 </tr>
               </tbody>
@@ -518,7 +183,7 @@ const initialGraphState = {
     <section class="contents">
       <div class="section_title_wrapper">
         <h3 class="section_title">ユーザー統計</h3>
-        <p class="section_period">過去1週間</p>
+        <p class="section_period">{analyticsData.periodLabel}</p>
       </div>
       <div class="box">
         <div class="inner">
@@ -529,8 +194,8 @@ const initialGraphState = {
           <MyLineChart
             client:load
             dataLabel="ユーザー数"
-            labels={pvLabels}
-            dataPoints={pvDatas}
+            labels={analyticsData.chartData.labels}
+            dataPoints={analyticsData.chartData.displayData}
             borderColor="#468FDD"
           />
         </div>
@@ -543,7 +208,7 @@ const initialGraphState = {
     <section class="contents">
       <div class="section_title_wrapper">
         <h3 class="section_title">ブログ統計</h3>
-        <p class="section_period">過去1週間</p>
+        <p class="section_period">{analyticsData.periodLabel}</p>
       </div>
       <div class="box">
         <div class="inner">
@@ -554,8 +219,8 @@ const initialGraphState = {
           <MyLineChart
             client:load
             dataLabel="閲覧数"
-            labels={pvLabels}
-            dataPoints={pvDatas}
+            labels={analyticsData.chartData.labels}
+            dataPoints={analyticsData.chartData.displayData}
             borderColor="#468FDD"
           />
         </div>
@@ -568,7 +233,7 @@ const initialGraphState = {
     <section class="contents">
       <div class="section_title_wrapper">
         <h3 class="section_title">検索キーワードランキング</h3>
-        <p class="section_period">過去1週間</p>
+        <p class="section_period">{analyticsData.periodLabel}</p>
       </div>
       <div class="box">
         <div class="inner">
@@ -697,8 +362,8 @@ const initialGraphState = {
     width: 100%;
     margin-top: 16px;
     background-color: var(--sub-bg-color);
-		border: 1px solid var(--main-border-color);
-		border-radius: var(--border-radius-m);
+    border: 1px solid var(--main-border-color);
+    border-radius: var(--border-radius-m);
 
     >.inner{
       padding: 16px 24px;
@@ -787,26 +452,28 @@ const initialGraphState = {
   }
 
   .box{
-		background-color: var(--sub-bg-color);
-		border: 1px solid var(--main-border-color);
-		border-radius: var(--border-radius-m);
-		margin-top: 16px;
+    background-color: var(--sub-bg-color);
+    border: 1px solid var(--main-border-color);
+    border-radius: var(--border-radius-m);
+    margin-top: 16px;
 
-		&:first-of-type{
-			margin-top: 16px;
-		}
+    &:first-of-type{
+      margin-top: 16px;
+    }
 
-		>.inner{
-			padding: 16px;
-		}
+    >.inner{
+      padding: 16px;
+    }
+  }
 
-    .wrapper{
+  .wrapper{
       display: flex;
       align-items: center;
       gap: 8px;
       margin-bottom: 16px;
+    }
 
-      .graph_desc{
+    .graph_desc{
         font-size: var(--font-size-xxs);
         color: var(--sub-font-color);
         padding-right: 8px;
@@ -818,8 +485,6 @@ const initialGraphState = {
         font-weight: 500;
         color: var(--main-font-color);
       }
-    }
-  }
 
   .contents{
     width: calc(100% - 32px);
@@ -987,317 +652,5 @@ const initialGraphState = {
   }
 </style>
 
-<script>
-  document.addEventListener('DOMContentLoaded', () => {
-    // タブ切り替えの処理
-    const tabButtons = document.querySelectorAll('.tabs_btn');
-    const tabContents = document.querySelectorAll('.tab-content');
-
-    tabButtons.forEach(button => {
-      button.addEventListener('click', () => {
-        // 全てのタブボタンからactiveクラスを削除
-        tabButtons.forEach(btn => btn.classList.remove('active'));
-        // クリックされたボタンにactiveクラスを追加
-        button.classList.add('active');
-
-        // 全てのタブコンテンツを非表示
-        tabContents.forEach(content => content.classList.remove('active'));
-        // クリックされたタブに対応するコンテンツを表示
-        const targetId = button.dataset.tab;
-        const targetContent = document.getElementById(targetId);
-        if (targetContent) {
-          targetContent.classList.add('active');
-        }
-      });
-    });
-
-    // 期間切り替えの処理
-    const periodButtons = document.querySelectorAll('.tab_option[data-period]');
-    const periodLabels = document.querySelectorAll('.section_period');
-    
-    // 日付の配列を生成する関数
-    const generateDailyDates = (days) => {
-      const dates = [];
-      const today = new Date();
-      
-      for (let i = days; i >= 0; i--) {
-        const date = new Date();
-        date.setDate(today.getDate() - i);
-        const formattedDate = `${date.getFullYear()}/${String(date.getMonth() + 1).padStart(2, '0')}/${String(date.getDate()).padStart(2, '0')}`;
-        dates.push(formattedDate);
-      }
-      
-      return dates;
-    };
-
-    // ランダムなデータを生成する関数
-    const generateRandomData = (length, min, max) => {
-      return Array.from({ length }, () => Math.floor(Math.random() * (max - min + 1)) + min);
-    };
-
-    // 累計データの計算（サマリーカード用）
-    const calculateTotalStats = (displayData, clickData) => {
-      const totalDisplayCount = displayData.reduce((sum, val) => sum + val, 0);
-      const totalClickCount = clickData.reduce((sum, val) => sum + val, 0);
-      const totalCtr = totalDisplayCount > 0 ? 
-        Math.round((totalClickCount / totalDisplayCount) * 100 * 10) / 10 : 0;
-      
-      return {
-        displayCount: totalDisplayCount,
-        clickCount: totalClickCount,
-        ctr: totalCtr
-      };
-    };
-
-    // 24時間のデータ（クリック数を表示回数より必ず小さくする）
-    const hourlyDisplayData = [45, 62, 80, 95, 120, 105, 90, 75];
-    const hourlyClickData = [12, 15, 25, 30, 40, 32, 28, 20];
-    
-    // 1週間のデータ（クリック数を表示回数より必ず小さくする）
-    const weeklyDisplayData = [150, 250, 200, 300, 180, 320, 240];
-    const weeklyClickData = [20, 50, 30, 60, 40, 80, 60];
-    
-    // 1ヶ月分のデータを生成（クリック数が表示回数を超えないように調整）
-    const monthlyDates = generateDailyDates(30);
-    const monthlyDisplayData = generateRandomData(31, 50, 200);
-    const monthlyClickData = monthlyDisplayData.map(display => 
-      Math.floor(Math.random() * (display * 0.4)) // 表示回数の最大40%までのクリック数
-    );
-    const monthlyCtrData = monthlyDisplayData.map((display, index) => 
-      display > 0 ? Math.round((monthlyClickData[index] / display) * 100) : 0
-    );
-
-    // 3ヶ月分のデータを生成（クリック数が表示回数を超えないように調整）
-    const threeMonthsDates = generateDailyDates(90);
-    const threeMonthsDisplayData = generateRandomData(91, 40, 180);
-    const threeMonthsClickData = threeMonthsDisplayData.map(display => 
-      Math.floor(Math.random() * (display * 0.35)) // 表示回数の最大35%までのクリック数
-    );
-    const threeMonthsCtrData = threeMonthsDisplayData.map((display, index) => 
-      display > 0 ? Math.round((threeMonthsClickData[index] / display) * 100) : 0
-    );
-
-    // 6ヶ月分のデータを生成（クリック数が表示回数を超えないように調整）
-    const sixMonthsDates = generateDailyDates(180);
-    const sixMonthsDisplayData = generateRandomData(181, 30, 200);
-    const sixMonthsClickData = sixMonthsDisplayData.map(display => 
-      Math.floor(Math.random() * (display * 0.3)) // 表示回数の最大30%までのクリック数
-    );
-    const sixMonthsCtrData = sixMonthsDisplayData.map((display, index) => 
-      display > 0 ? Math.round((sixMonthsClickData[index] / display) * 100) : 0
-    );
-
-    // 1年分のデータを生成（クリック数が表示回数を超えないように調整）
-    const yearlyDates = generateDailyDates(365);
-    const yearlyDisplayData = generateRandomData(366, 20, 220);
-    const yearlyClickData = yearlyDisplayData.map(display => 
-      Math.floor(Math.random() * (display * 0.25)) // 表示回数の最大25%までのクリック数
-    );
-    const yearlyCtrData = yearlyDisplayData.map((display, index) => 
-      display > 0 ? Math.round((yearlyClickData[index] / display) * 100) : 0
-    );
-
-    // 各期間の累計データを事前計算
-    const hourlyTotalStats = calculateTotalStats(hourlyDisplayData, hourlyClickData);
-    const weeklyTotalStats = calculateTotalStats(weeklyDisplayData, weeklyClickData);
-    const monthlyTotalStats = calculateTotalStats(monthlyDisplayData, monthlyClickData);
-    const threeMonthsTotalStats = calculateTotalStats(threeMonthsDisplayData, threeMonthsClickData);
-    const sixMonthsTotalStats = calculateTotalStats(sixMonthsDisplayData, sixMonthsClickData);
-    const yearlyTotalStats = calculateTotalStats(yearlyDisplayData, yearlyClickData);
-    
-    // サンプルデータセット（実際の実装では、これがFirebaseなどから取得される）
-    const dataSet = {
-      '24h': {
-        labels: ['00時', '03時', '06時', '09時', '12時', '15時', '18時', '21時'],
-        displayData: hourlyDisplayData,
-        clickData: hourlyClickData,
-        ctrData: hourlyDisplayData.map((display, index) => 
-          display > 0 ? Math.round((hourlyClickData[index] / display) * 100) : 0
-        ),
-        timeUnit: 'hour', // 時間単位の指定
-        totalStats: hourlyTotalStats
-      },
-      '1w': {
-        labels: [
-          "2025/02/16",
-          "2025/02/17",
-          "2025/02/18",
-          "2025/02/19",
-          "2025/02/20",
-          "2025/02/21",
-          "2025/02/22",
-        ],
-        displayData: weeklyDisplayData,
-        clickData: weeklyClickData,
-        ctrData: weeklyDisplayData.map((display, index) => 
-          display > 0 ? Math.round((weeklyClickData[index] / display) * 100) : 0
-        ),
-        timeUnit: 'day', // 日単位の指定
-        totalStats: weeklyTotalStats
-      },
-      '1m': {
-        labels: monthlyDates,
-        displayData: monthlyDisplayData,
-        clickData: monthlyClickData,
-        ctrData: monthlyCtrData,
-        timeUnit: 'day',
-        totalStats: monthlyTotalStats
-      },
-      '3m': {
-        labels: threeMonthsDates,
-        displayData: threeMonthsDisplayData,
-        clickData: threeMonthsClickData,
-        ctrData: threeMonthsCtrData,
-        timeUnit: 'day',
-        totalStats: threeMonthsTotalStats
-      },
-      '6m': {
-        labels: sixMonthsDates,
-        displayData: sixMonthsDisplayData,
-        clickData: sixMonthsClickData,
-        ctrData: sixMonthsCtrData,
-        timeUnit: 'day',
-        totalStats: sixMonthsTotalStats
-      },
-      '1y': {
-        labels: yearlyDates,
-        displayData: yearlyDisplayData,
-        clickData: yearlyClickData,
-        ctrData: yearlyCtrData,
-        timeUnit: 'day',
-        totalStats: yearlyTotalStats
-      }
-    };
-    
-    // 期間表示の変更関数
-    const updatePeriodDisplay = (periodText) => {
-      periodLabels.forEach(label => {
-        label.textContent = periodText;
-      });
-    };
-
-    // カードの値を更新する関数
-    const updateCardValues = (totalStats) => {
-      const displayCountElement = document.querySelector('.tab_box_card_value:nth-of-type(1)');
-      const clickCountElement = document.querySelector('.tab_box_card:nth-of-type(2) .tab_box_card_value');
-      const ctrElement = document.querySelector('.tab_box_card:nth-of-type(3) .tab_box_card_value');
-      
-      if (displayCountElement) {
-        displayCountElement.textContent = totalStats.displayCount.toLocaleString();
-      }
-      
-      if (clickCountElement) {
-        clickCountElement.textContent = totalStats.clickCount.toLocaleString();
-      }
-      
-      if (ctrElement) {
-        ctrElement.textContent = totalStats.ctr;
-      }
-    };
-
-    // グラフデータの更新関数
-    const updateChartData = (period) => {
-      const chartData = dataSet[period];
-      if (!chartData) return;
-
-      // カスタムイベントでグラフデータを更新
-      const updateEvent = new CustomEvent('updateChartData', { 
-        detail: chartData
-      });
-      window.dispatchEvent(updateEvent);
-
-      // 指標の合計値も更新
-      const displayTotal = chartData.displayData.reduce((sum, val) => sum + val, 0);
-      const clickTotal = chartData.clickData.reduce((sum, val) => sum + val, 0);
-      const ctrValue = displayTotal > 0 ? `${(clickTotal / displayTotal * 100).toFixed(1)}%` : "0%";
-
-      // 表示を更新
-      const displayValue = document.querySelector('.display-value');
-      const clickValue = document.querySelector('.click-value');
-      const ctrValueElement = document.querySelector('.ctr-value');
-
-      if (displayValue) displayValue.textContent = displayTotal;
-      if (clickValue) clickValue.textContent = clickTotal;
-      if (ctrValueElement) ctrValueElement.textContent = ctrValue;
-      
-      // カードの値も更新
-      updateCardValues(chartData.totalStats);
-    };
-    
-    // グラフの準備ができたら初期化
-    window.addEventListener('chartReady', () => {
-      const activeButton = document.querySelector('.tab_option.active');
-      if (activeButton) {
-        const period = activeButton.dataset.period || '1w';
-        updateChartData(period);
-      }
-    });
-    
-    periodButtons.forEach(button => {
-      button.addEventListener('click', () => {
-        // アクティブなボタンのクラスを削除
-        periodButtons.forEach(btn => btn.classList.remove('active'));
-        // クリックされたボタンにアクティブクラスを追加
-        button.classList.add('active');
-        
-        // 期間に応じた表示テキストを設定
-        const period = button.dataset.period;
-        let periodText = '';
-        
-        switch(period) {
-          case '24h':
-            periodText = '過去24時間';
-            break;
-          case '1w':
-            periodText = '過去1週間';
-            break;
-          case '1m':
-            periodText = '過去1ヶ月';
-            break;
-          case '3m':
-            periodText = '過去3ヶ月';
-            break;
-          case '6m':
-            periodText = '過去6ヶ月';
-            break;
-          case '1y':
-            periodText = '過去12ヶ月';
-            break;
-          default:
-            periodText = '過去1週間';
-        }
-        
-        // 期間表示を更新
-        updatePeriodDisplay(periodText);
-        
-        // グラフデータを更新
-        updateChartData(period);
-        
-        console.log(`期間を${periodText}に変更しました`);
-      });
-    });
-
-    // チェックボックスの状態に応じて指標の値の表示を制御
-    const checkboxes = document.querySelectorAll('.metric-checkbox');
-    
-    checkboxes.forEach(checkbox => {
-      checkbox.addEventListener('change', (e) => {
-        const target = e.target as HTMLInputElement;
-        const metric = target.dataset.metric;
-        const isChecked = target.checked;
-        
-        // 対応する値の表示/非表示を切り替え
-        const metricValue = target.closest('.metric')?.querySelector(`.${metric}-value`);
-        if (metricValue) {
-          metricValue.style.opacity = isChecked ? '1' : '0.3';
-        }
-        
-        // グラフのデータセット表示/非表示を切り替え
-        const toggleEvent = new CustomEvent('toggleChartDataset', {
-          detail: { metric, visible: isChecked }
-        });
-        window.dispatchEvent(toggleEvent);
-      });
-    });
-  });
-</script>
+<!-- 最適化: 外部JavaScriptファイルをインポート -->
+<script src="../../../scripts/analytics-client.js"></script>

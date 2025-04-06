@@ -1,0 +1,180 @@
+<div id="delete-confirm-modal" class="modal" style="display: none;">
+  <div class="modal-content">
+    <div class="modal_header">
+      <h2 class="modal_header_title">プロジェクトを削除</h2>
+      <p class="modal_header_desc">下の記入欄にプロジェクト名を入力してください</p>
+    </div>
+    <form class="delete_project_form" method="POST">
+      <input type="hidden" name="action" value="delete_project" />
+      <input type="hidden" name="projectId" id="deleteProjectId" />
+      <input type="hidden" name="originalProjectName" id="deleteOriginalName" />
+      <div class="project_settings_wrapper">
+        <label for="confirmProjectName">プロジェクト名</label>
+        <input
+          type="text"
+          name="confirmProjectName"
+          id="confirmProjectNameInput"
+          placeholder="プロジェクト名を入力"
+          required
+        />
+      </div>
+      <div class="project_settings_btns">
+        <span class="close" id="delete-cancel-btn">やめる</span>
+        <button class="delete" type="submit" id="delete-submit-btn">
+          削除
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<style>
+  .modal {
+    position: fixed;
+    z-index: 1000;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    overflow: auto;
+    background-color: rgba(35, 35, 36, 0.8);
+  }
+  
+  .modal-content {
+    width: 100%;
+    max-width: 760px;
+    margin: 12% auto;
+    padding: 24px;
+    border: 1px solid var(--main-border-color);
+    border-radius: var(--border-radius-m);
+    background-color: var(--sub-bg-color);
+  }
+
+  .modal_header {
+    display: flex;
+    align-items: center;
+  }
+
+  .modal_header_title {
+    font-size: var(--font-size-m);
+    color: var(--main-font-color);
+  }
+
+  .modal_header_desc {
+    font-size: var(--font-size-xs);
+    color: var(--elem-font-color);
+    margin-left: 16px;
+  }
+
+  .delete_project_form {
+    margin-top: 16px;
+    padding-top: 24px;
+    border-top: 1px solid var(--main-border-color);
+  }
+
+  .project_settings_wrapper {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+
+  .project_settings_wrapper label {
+    font-size: var(--font-size-s);
+    color: var(--sub-font-color);
+  }
+
+  .project_settings_wrapper input {
+    padding: 16px;
+    border: 1px solid var(--main-border-color);
+    background-color: var(--item-bg-color);
+    border-radius: var(--border-radius-m);
+    font-size: var(--font-size-s);
+    color: var(--main-font-color);
+  }
+
+  .project_settings_btns {
+    margin-top: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: right;
+    gap: 16px;
+  }
+
+  .project_settings_btns span,
+  .project_settings_btns button {
+    padding: 12px 16px;
+    border-radius: var(--border-radius-m);
+    border: 1px solid var(--main-border-color);
+    font-size: var(--font-size-xs);
+    color: var(--main-font-color);
+    cursor: pointer;
+  }
+
+  .project_settings_btns .delete {
+    background-color: var(--delete-bg-color);
+  }
+</style>
+
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+  const deleteModal = document.getElementById("delete-confirm-modal");
+  const deleteCancelBtn = document.getElementById("delete-cancel-btn");
+  const deleteSubmitBtn = document.getElementById("delete-submit-btn");
+  const deleteProjectIdInput = document.getElementById("deleteProjectId");
+  const deleteOriginalNameInput = document.getElementById("deleteOriginalName");
+  const confirmProjectNameInput = document.getElementById("confirmProjectNameInput");
+
+  if (!deleteModal) return;
+
+  const deleteConfirmBtns = document.querySelectorAll(".delete_confirm_btn");
+  deleteConfirmBtns.forEach((btn) => {
+    btn.addEventListener("click", (event) => {
+      // クリックされたプロジェクトの情報を取得
+      const projectId = btn.getAttribute("data-project-id");
+      const projectName = btn.getAttribute("data-project-name");
+
+      if (deleteProjectIdInput && deleteOriginalNameInput) {
+        // hidden input に値を反映
+        deleteProjectIdInput.value = projectId || '';
+        deleteOriginalNameInput.value = projectName || '';
+      }
+      
+      if (confirmProjectNameInput) {
+        confirmProjectNameInput.value = "";
+      }
+
+      // モーダルを表示
+      if (deleteModal) {
+        deleteModal.style.display = "block";
+      }
+      
+      // イベント伝播を止める
+      event.stopPropagation();
+    });
+  });
+
+  if (deleteCancelBtn) {
+    deleteCancelBtn.addEventListener("click", () => {
+      deleteModal.style.display = "none";
+    });
+  }
+
+  window.addEventListener("click", (e) => {
+    if (e.target === deleteModal) {
+      deleteModal.style.display = "none";
+    }
+  });
+
+  if (deleteSubmitBtn && confirmProjectNameInput && deleteOriginalNameInput) {
+    deleteSubmitBtn.addEventListener("click", (e) => {
+      const typedName = confirmProjectNameInput.value.trim();
+      const originalName = deleteOriginalNameInput.value.trim();
+
+      if (!typedName || typedName !== originalName) {
+        e.preventDefault();
+        alert("プロジェクト名が一致しません。削除できません。");
+      }
+    });
+  }
+});
+</script> 

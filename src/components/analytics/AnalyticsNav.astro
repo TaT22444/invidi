@@ -1,0 +1,52 @@
+---
+interface Props {
+  projectId: string;
+  activeTab?: string;
+}
+
+const { projectId, activeTab = "search-performance" } = Astro.props;
+---
+
+<nav class="tabs">
+  <ul class="tabs_list">
+    <li class="tabs_item">
+      <button class={`tabs_btn ${activeTab === 'search-performance' ? 'active' : ''}`} data-tab="search-performance">検索パフォーマンス</button>
+    </li>
+    <li class="tabs_item">
+      <button class={`tabs_btn ${activeTab === 'users' ? 'active' : ''}`} data-tab="users">ユーザー</button>
+    </li>
+    <li class="tabs_item">
+      <button class={`tabs_btn ${activeTab === 'blog' ? 'active' : ''}`} data-tab="blog">ブログ</button>
+    </li>
+    <li class="tabs_item">
+      <button class={`tabs_btn ${activeTab === 'search-ranking' ? 'active' : ''}`} data-tab="search-ranking">検索ランキング</button>
+    </li>
+  </ul>
+</nav> 
+
+
+<style lang="scss">
+  .tabs{
+
+&_list{
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+&_item{
+}
+&_btn{
+  padding: 12px 16px;
+  border-radius: var(--border-radius-s);
+  font-size: var(--font-size-xxs);
+  font-weight: 400;
+  color: var(--sub-font-color);
+  
+  &.active{
+    background-color: var(--btn-bg-color);
+    border: 1px solid var(--main-border-color);
+    color: var(--main-font-color);
+  }
+}
+}
+</style>

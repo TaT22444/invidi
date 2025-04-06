@@ -1,0 +1,241 @@
+---
+interface Props {
+  labels: string[];
+  displayData: number[];
+  clickData: number[];
+  ctrData: number[];
+  period: string;
+}
+
+import PerformanceChart from "../../components/PerformanceChart.jsx";
+
+const { labels, displayData, clickData, ctrData, period } = Astro.props;
+
+// 合計の計算
+const totalDisplay = displayData.reduce((sum, val) => sum + val, 0);
+const totalClick = clickData.reduce((sum, val) => sum + val, 0);
+const averageCtr = totalDisplay > 0 ? `${(totalClick / totalDisplay * 100).toFixed(1)}%` : "0%";
+---
+
+<div class="wrapper">
+  <p class="graph_desc">パフォーマンス指標</p>
+  <div class="performance-metrics">
+    <div class="metric">
+      <label class="metric-toggle">
+        <input type="checkbox" class="metric-checkbox" data-metric="display" checked>
+        <span class="metric-indicator display-color"></span>
+      </label>
+      <span class="metric-label">表示回数:</span>
+      <span class="metric-value display-value">{totalDisplay}</span>
+    </div>
+    <div class="metric">
+      <label class="metric-toggle">
+        <input type="checkbox" class="metric-checkbox" data-metric="click" checked>
+        <span class="metric-indicator click-color"></span>
+      </label>
+      <span class="metric-label">クリック数:</span>
+      <span class="metric-value click-value">{totalClick}</span>
+    </div>
+    <div class="metric">
+      <label class="metric-toggle">
+        <input type="checkbox" class="metric-checkbox" data-metric="ctr" checked>
+        <span class="metric-indicator ctr-color"></span>
+      </label>
+      <span class="metric-label">CTR:</span>
+      <span class="metric-value ctr-value">{averageCtr}</span>
+    </div>
+  </div>
+</div>
+
+<div class="performance-chart">
+  <PerformanceChart
+    client:load
+    labels={labels}
+    displayData={displayData}
+    clickData={clickData}
+    ctrData={ctrData}
+    displayColor="#468FDD"
+    clickColor="#4CAF50"
+    ctrColor="#FFA726"
+    height="300px"
+    maxY={Math.ceil(Math.max(...displayData) * 1.2 / 10) * 10}
+    maxY2={Math.ceil(Math.max(...clickData) * 1.2 / 10) * 10}
+    maxY1={100}
+    showSeparateYAxis={true}
+    showDisplay={true}
+    showClick={true}
+    showCtr={true}
+  />
+</div> 
+
+<style lang="scss">
+  .box{
+    background-color: var(--sub-bg-color);
+    border: 1px solid var(--main-border-color);
+    border-radius: var(--border-radius-m);
+    margin-top: 16px;
+
+    &:first-of-type{
+      margin-top: 16px;
+    }
+
+    >.inner{
+      padding: 16px;
+    }
+  }
+
+  .wrapper{
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 16px;
+
+    .graph_desc{
+      font-size: var(--font-size-xxs);
+      color: var(--sub-font-color);
+      padding-right: 8px;
+      border-right: 1px solid var(--sub-border-color);
+    }
+
+    .graph_value{
+      font-size: var(--font-size-xs);
+      font-weight: 500;
+      color: var(--main-font-color);
+    }
+  }
+
+  .performance-metrics {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+  }
+  
+  .metric {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+  
+  .metric-indicator {
+    width: 12px;
+    height: 12px;
+    border-radius: 2px;
+    display: inline-block;
+  }
+  
+  .metric-label {
+    font-size: var(--font-size-xxs);
+    color: var(--sub-font-color);
+  }
+  
+  .metric-value {
+    font-size: var(--font-size-xs);
+    font-weight: 500;
+  }
+  
+  .display-value {
+    color: #468FDD;
+  }
+  
+  .click-value {
+    color: #4CAF50;
+  }
+  
+  .ctr-value {
+    color: #FFA726;
+  }
+  
+  .display-color {
+    background-color: #468FDD;
+  }
+  
+  .click-color {
+    background-color: #4CAF50;
+  }
+  
+  .ctr-color {
+    background-color: #FFA726;
+  }
+
+  .metric-toggle {
+    display: flex;
+    align-items: center;
+    cursor: pointer;
+  }
+
+  .metric-checkbox {
+    display: none;
+  }
+
+  .metric-checkbox:not(:checked) + .metric-indicator {
+    opacity: 0.3;
+  }
+
+  .performance-chart {
+    width: 100%;
+    position: relative;
+  }
+
+  /* チェックボックスがオフの時のスタイル */
+  .metric-checkbox:not(:checked) ~ .metric-value {
+    opacity: 0.3;
+  }
+
+  .page-metrics {
+    width: 100%;
+    overflow-x: auto;
+  }
+
+  .metrics-table {
+    width: 100%;
+    border-collapse: collapse;
+
+    tr{
+      padding-inline: 16px;
+    }
+    
+    th, td {
+      padding: 16px 0;
+      text-align: left;
+    }
+
+    th {
+      font-size: var(--font-size-xs);
+      font-weight: 400;
+      color: var(--sub-font-color);
+      border-bottom: 1px solid var(--main-border-color);
+    }
+
+    td{
+      border-bottom: 1px solid var(--sub-border-color);
+    }
+
+    .path-column {
+      width: 60%;
+    }
+
+    .metric-column {
+      width: 13.33%;
+      text-align: right;
+    }
+
+    .path-cell {
+      font-size: var(--font-size-xs);
+      color: var(--main-font-color);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 0;
+    }
+
+    .metric-cell {
+      font-size: var(--font-size-xs);
+      color: var(--main-font-color);
+      text-align: right;
+    }
+
+    tbody tr:hover {
+      background-color: var(--hover-bg-color);
+    }
+  }
+</style>

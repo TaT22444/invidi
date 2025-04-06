@@ -1,0 +1,36 @@
+---
+interface Props {
+  project: any;
+  projectId: string;
+}
+
+const { project, projectId } = Astro.props;
+---
+
+<header class="preview_header">
+  <div class="preview_header_title-wrapper">
+    <h1 class="preview_header_title">{project?.name || "プロジェクト名未設定"}</h1>
+    <button class="follow-btn">
+      <span>フォロー</span>
+    </button>
+  </div>
+  <nav class="preview_header_nav">
+    <ul class="preview_header_nav_list">
+      <li class="preview_header_nav_item">
+        <a href=`/projects/${projectId}` class="preview_header_nav_link" id="switch-btn">サマリー</a>
+      </li>
+      <li class="preview_header_nav_item">
+        <a href=`/projects/${projectId}/profile` class="preview_header_nav_link" id="switch-btn">プロフィール</a>
+      </li>
+      <li class="preview_header_nav_item">
+        <a href=`/projects/${projectId}/form` class="preview_header_nav_link" id="switch-btn">フォーム</a>
+      </li>
+      <li class="preview_header_nav_item">
+        <a href=`/projects/${projectId}/cms` class="preview_header_nav_link" id="switch-btn">CMS</a>
+      </li>
+      <li class="preview_header_nav_item">
+        <a href=`/projects/${projectId}/analitics` class="preview_header_nav_link" id="switch-btn">アナリティクス</a>
+      </li>
+    </ul>
+  </nav>
+</header>

@@ -72,13 +72,7 @@ export const POST: APIRoute = async ({ request }) => {
           });
           
           // 公開状態のもののみフィルタリング
-          const publicItems = allItems.filter(item => {
-            console.log(`ブログID: ${item.id}, ステータス: ${item.status}`);
-            return item.status === "public" || item.status === "published";
-          });
-          
-          // より明示的なログ出力
-          console.log(`ブログフィルタリング: 取得総数=${allItems.length}, 公開済み=${publicItems.length}`);
+          const publicItems = allItems.filter(item => item.status === "public" || item.status === "published");
           
           // 返却データの準備（limitまで）
           const hasMore = publicItems.length > limit;
@@ -327,13 +321,7 @@ export const GET: APIRoute = async ({ request }) => {
       });
       
       // 公開状態のもののみフィルタリング
-      const publicItems = allItems.filter(item => {
-        console.log(`ブログID: ${item.id}, ステータス: ${item.status}`);
-        return item.status === "public" || item.status === "published";
-      });
-      
-      // より明示的なログ出力
-      console.log(`ブログフィルタリング: 取得総数=${allItems.length}, 公開済み=${publicItems.length}`);
+      const publicItems = allItems.filter(item => item.status === "public" || item.status === "published");
       
       // 返却データの準備（limitまで）
       const hasMore = publicItems.length > limit;

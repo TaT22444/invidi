@@ -1,0 +1,101 @@
+---
+interface Props {
+  project: any;
+}
+
+const { project } = Astro.props;
+---
+
+<section class="box">
+  <div class="inner">
+    <div class="hero">
+      <div class="hero_banner" id="hero-banner">
+        <input type="file" id="banner-upload" accept="image/*" style="display: none;">
+        {project?.bannerUrl ? (
+          <img class="hero_banner_img" src={project.bannerUrl} alt="バナー画像">
+        ) : (
+          <div class="default-image-icon">
+            <svg width="24" height="24" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M27.902 13.32C19.0887 12.1093 11.4887 18.6533 11.9993 27.3333M8.66602 10.6667C8.66602 11.3739 8.94697 12.0522 9.44706 12.5523C9.94716 13.0524 10.6254 13.3333 11.3327 13.3333C12.0399 13.3333 12.7182 13.0524 13.2183 12.5523C13.7184 12.0522 13.9993 11.3739 13.9993 10.6667C13.9993 9.95942 13.7184 9.28115 13.2183 8.78105C12.7182 8.28095 12.0399 8 11.3327 8C10.6254 8 9.94716 8.28095 9.44706 8.78105C8.94697 9.28115 8.66602 9.95942 8.66602 10.6667Z" stroke="#C4C4C4" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+              <path d="M4 17.4216C7.70667 16.9082 11.0333 18.6989 12.832 21.5549" stroke="#C4C4C4" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+              <path d="M4 12.5333C4 9.54667 4 8.05333 4.58133 6.912C5.09265 5.90851 5.90851 5.09265 6.912 4.58133C8.05333 4 9.54667 4 12.5333 4H19.4667C22.4533 4 23.9467 4 25.088 4.58133C26.0915 5.09265 26.9073 5.90851 27.4187 6.912C28 8.05333 28 9.54667 28 12.5333V19.4667C28 22.4533 28 23.9467 27.4187 25.088C26.9073 26.0915 26.0915 26.9073 25.088 27.4187C23.9467 28 22.4533 28 19.4667 28H12.5333C9.54667 28 8.05333 28 6.912 27.4187C5.90851 26.9073 5.09265 26.0915 4.58133 25.088C4 23.9467 4 22.4533 4 19.4667V12.5333Z" stroke="#C4C4C4" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>              
+          </div>
+        )}
+      </div>
+      <div class="hero_body">
+        <div class="hero_body_prof">
+          <p class="hero_body_prof_p">
+            <span>フォロワー</span>
+            <span class="slash"></span>
+            <strong class={`strong ${project?.followers > 100 ? 'many-followers' : ''}`}>
+              {project?.followers || 0}人
+            </strong>
+          </p>
+          <div class="hero_body_prof_title">
+            <h2 class="project-name">{project?.siteName || project?.name || "サイト名未設定"}</h2>            
+          </div>
+          <div class="hero_body_prof_desc">
+            <p id="project-description">{project?.description || "このサイトの紹介文を入力してください。このサイトの紹介文を入力してください。このサイトの紹介文を入力してください。このサイトの紹介文を入力してください。このサイトの紹介文を入力してください。このサイトの紹介文を入力してください。"}</p>         
+          </div>
+        </div>
+        <div class="hero_body_img" id="hero-profile-img">
+          <input type="file" id="profile-upload" accept="image/*" style="display: none;">
+          {project?.profileImageUrl ? (
+            <img class="hero_profile_img" src={project.profileImageUrl} alt="プロフィール画像">
+          ) : (
+            <div class="default-image-icon">
+              <svg width="24" height="24" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M27.902 13.32C19.0887 12.1093 11.4887 18.6533 11.9993 27.3333M8.66602 10.6667C8.66602 11.3739 8.94697 12.0522 9.44706 12.5523C9.94716 13.0524 10.6254 13.3333 11.3327 13.3333C12.0399 13.3333 12.7182 13.0524 13.2183 12.5523C13.7184 12.0522 13.9993 11.3739 13.9993 10.6667C13.9993 9.95942 13.7184 9.28115 13.2183 8.78105C12.7182 8.28095 12.0399 8 11.3327 8C10.6254 8 9.94716 8.28095 9.44706 8.78105C8.94697 9.28115 8.66602 9.95942 8.66602 10.6667Z" stroke="#C4C4C4" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                <path d="M4 17.4216C7.70667 16.9082 11.0333 18.6989 12.832 21.5549" stroke="#C4C4C4" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                <path d="M4 12.5333C4 9.54667 4 8.05333 4.58133 6.912C5.09265 5.90851 5.90851 5.09265 6.912 4.58133C8.05333 4 9.54667 4 12.5333 4H19.4667C22.4533 4 23.9467 4 25.088 4.58133C26.0915 5.09265 26.9073 5.90851 27.4187 6.912C28 8.05333 28 9.54667 28 12.5333V19.4667C28 22.4533 28 23.9467 27.4187 25.088C26.9073 26.0915 26.0915 26.9073 25.088 27.4187C23.9467 28 22.4533 28 19.4667 28H12.5333C9.54667 28 8.05333 28 6.912 27.4187C5.90851 26.9073 5.09265 26.0915 4.58133 25.088C4 23.9467 4 22.4533 4 19.4667V12.5333Z" stroke="#C4C4C4" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>                
+            </div>
+          )}
+        </div>
+      </div>
+      <ul class="hero_btn-list">
+        <li class="hero_btn-item">
+          <button class="hero_btn follow-btn" id="follow-button">
+            <span>フォロー</span>
+          </button>
+        </li>
+        
+        {project?.snsLinks?.map((link: {
+          type: string;
+          name: string;
+          description?: string;
+        }) => (
+          <li class="hero_btn-item" 
+              data-sns-type={link.type} 
+              data-sns-name={link.name} 
+              data-sns-description={link.description || ''}>
+            <button class="hero_btn">
+              {link.type === 'instagram' && (
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zm0-2.163c-3.259 0-3.667.014-4.947.072-4.358.2-6.78 2.618-6.98 6.98-.059 1.281-.073 1.689-.073 4.948 0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98 1.281.058 1.689.072 4.948.072 3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98-1.281-.059-1.69-.073-4.949-.073zm0 5.838c-3.403 0-6.162 2.759-6.162 6.162s2.759 6.163 6.162 6.163 6.162-2.759 6.162-6.163c0-3.403-2.759-6.162-6.162-6.162zm0 10.162c-2.209 0-4-1.79-4-4 0-2.209 1.791-4 4-4s4 1.791 4 4c0 2.21-1.791 4-4 4zm6.406-11.845c-.796 0-1.441.645-1.441 1.44s.645 1.44 1.441 1.44c.795 0 1.439-.645 1.439-1.44s-.644-1.44-1.439-1.44z" fill="currentColor"/>
+                </svg>
+              )}
+              {link.type === 'twitter' && (
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M23 3a10.9 10.9 0 0 1-3.14 1.53 4.48 4.48 0 0 0-7.86 3v1A10.66 10.66 0 0 1 3 4s-4 9 5 13a11.64 11.64 0 0 1-7 2c9 5 20 0 20-11.5a4.5 4.5 0 0 0-.08-.83A7.72 7.72 0 0 0 23 3z" fill="currentColor" stroke="currentColor" stroke-width="0.5" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+              )}
+              {link.type === 'youtube' && (
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M22.54 6.42a2.78 2.78 0 0 0-1.94-2C18.88 4 12 4 12 4s-6.88 0-8.6.46a2.78 2.78 0 0 0-1.94 2A29 29 0 0 0 1 11.75a29 29 0 0 0 .46 5.33A2.78 2.78 0 0 0 3.4 19c1.72.46 8.6.46 8.6.46s6.88 0 8.6-.46a2.78 2.78 0 0 0 1.94-2 29 29 0 0 0 .46-5.25 29 29 0 0 0-.46-5.33z" fill="currentColor"/>
+                  <polygon points="9.75 15.02 15.5 11.75 9.75 8.48 9.75 15.02" fill="var(--sub-bg-color)"/>
+                </svg>          
+              )}
+              {link.type === 'facebook' && (
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M18 2h-3a5 5 0 0 0-5 5v3H7v4h3v8h4v-8h3l1-4h-4V7a1 1 0 0 1 1-1h3z" fill="currentColor" stroke="currentColor" stroke-width="0.5" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>          
+              )}
+            </button>
+          </li>
+        ))}
+      </ul>
+    </div>
+  </div>
+</section> 

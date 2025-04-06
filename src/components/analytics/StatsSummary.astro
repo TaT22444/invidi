@@ -1,0 +1,179 @@
+---
+interface Props {
+  displayCount: number;
+  clickCount: number;
+  ctr: number;
+  title?: string;
+  description?: string;
+}
+
+const { 
+  displayCount, 
+  clickCount, 
+  ctr, 
+  title = "検索パフォーマンス", 
+  description = "サイト内の表示回数、クリック数、CTRを表示します" 
+} = Astro.props;
+---
+
+<div class="tab_box">
+  <h2 class="tab_box_title">{title}</h2>
+  <p class="tab_box_desc">{description}</p>
+  <div class="tab_box_cards">
+    <div class="tab_box_card">
+      <p>
+        <span class="tab_box_card_label">合計表示回数</span>
+        <strong class="tab_box_card_value">{displayCount.toLocaleString()}</strong>
+        <span class="tab_box_card_label">回</span>
+      </p>
+    </div>
+    <div class="tab_box_card">
+      <p>
+        <span class="tab_box_card_label">合計クリック回数</span>
+        <strong class="tab_box_card_value">{clickCount.toLocaleString()}</strong>
+        <span class="tab_box_card_label">回</span>
+      </p>
+    </div>
+    <div class="tab_box_card">
+      <p>
+        <span class="tab_box_card_label">総合CTR</span>
+        <strong class="tab_box_card_value">{ctr}</strong>
+        <span class="tab_box_card_label">%</span>
+      </p>
+    </div>
+  </div>
+</div> 
+
+<style lang="scss">
+  .tabs{
+
+&_list{
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+&_item{
+}
+&_btn{
+  padding: 12px 16px;
+  border-radius: var(--border-radius-s);
+  font-size: var(--font-size-xxs);
+  font-weight: 400;
+  color: var(--sub-font-color);
+  
+  &.active{
+    background-color: var(--btn-bg-color);
+    border: 1px solid var(--main-border-color);
+    color: var(--main-font-color);
+  }
+}
+}
+
+.ana-box{
+width: 100%;
+margin-top: 16px;
+background-color: var(--sub-bg-color);
+border: 1px solid var(--main-border-color);
+border-radius: var(--border-radius-m);
+
+>.inner{
+  padding: 16px 24px;
+}
+}
+
+.tab_box{
+margin-top: 32px;
+
+&_title{
+  font-size: var(--font-size-l);
+  font-weight: 500;
+  color: var(--main-font-color);
+}
+
+&_desc{
+  font-size: var(--font-size-xs);
+  font-weight: 400;
+  color: var(--sub-font-color);
+  margin-top: 8px;
+}
+
+&_cards{
+  margin-top: 24px;
+  padding-bottom: 24px;
+  display: flex;
+  gap: 16px;
+  border-bottom: 1px solid var(--main-border-color);
+}
+
+&_card{
+  padding: 16px;
+  border-radius: var(--border-radius-m);
+  background-color: var(--item-bg-color);
+  border: 1px solid var(--main-border-color);
+
+  >p{
+    display: flex;
+    align-items: center;
+    gap: 8px; 
+  }
+
+  &_label{
+    font-size: var(--font-size-xxs);
+    color: var(--sub-font-color);
+  }
+
+  &_value{
+    font-size: var(--font-size-m);
+    color: var(--main-font-color);
+  }
+}
+}
+
+.tab_options{
+margin-top: 24px;
+display: flex;
+align-items: center;
+gap: 8px; 
+}
+.tab_option{
+padding: 8px 12px;
+border-radius: var(--border-radius-m);
+font-size: var(--font-size-xxs);
+color: var(--sub-font-color);
+
+&.active{
+  color: var(--main-font-color);
+  background-color: var(--btn-bg-color);
+  border: 1px solid var(--main-border-color);
+}
+
+&_add{
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 12px;
+  border-radius: var(--border-radius-m);
+  font-size: var(--font-size-xxs);
+
+  &_label{
+    font-size: var(--font-size-xxs);
+    color: var(--main-font-color);
+  }
+}
+}
+
+.box{
+background-color: var(--sub-bg-color);
+border: 1px solid var(--main-border-color);
+border-radius: var(--border-radius-m);
+margin-top: 16px;
+
+&:first-of-type{
+  margin-top: 16px;
+}
+
+>.inner{
+  padding: 16px;
+}
+}
+</style>

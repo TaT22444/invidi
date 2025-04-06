@@ -1,0 +1,68 @@
+---
+import type { BlogItem } from '../../services/projectService';
+
+interface Props {
+  blogs: BlogItem[];
+  hasMore: boolean;
+  projectId: string;
+  limit?: number;
+}
+
+const { blogs, hasMore, projectId, limit = 3 } = Astro.props;
+
+// 日付フォーマット関数
+function formatDate(date: Date): string {
+  return new Intl.DateTimeFormat('ja-JP', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+  }).format(date).replace(/\//g, '/');
+}
+---
+
+<section class="cms-container">
+  <div class="inner">
+    <h3 class="cms-container_title">ブログ</h3>
+    <ul class="blog_list" data-has-more={hasMore.toString()}>
+      {blogs.length > 0 ? (
+        blogs.map((blog) => (
+          <li class="blog_item" data-blog-id={blog.id}>
+            <img src={blog.imageUrl} alt={blog.title} />
+            <p>
+              <span>{blog.tag}</span>
+              <span class="slash"></span>
+              <span>{formatDate(blog.createdAt)}</span>
+            </p>
+            <h4>{blog.title}</h4>
+          </li>
+        ))
+      ) : (
+        <li class="empty">
+          <span class="empty_label">ブログはありません！</span>
+        </li>
+      )}
+    </ul>
+
+    <div class="view-actions">
+      <div class="view-less" style="display: none;">
+        <button class="view-less_btn" id="show-less-blogs">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M19 11H5C4.73478 11 4.48043 11.1054 4.29289 11.2929C4.10536 11.4804 4 11.7348 4 12C4 12.2652 4.10536 12.5196 4.29289 12.7071C4.48043 12.8946 4.73478 13 5 13H19C19.2652 13 19.5196 12.8946 19.7071 12.7071C19.8946 12.5196 20 12.2652 20 12C20 11.7348 19.8946 11.4804 19.7071 11.2929C19.5196 11.1054 19.2652 11 19 11Z" fill="white"/>
+          </svg>
+          <p>表示を減らす</p>
+        </button>
+      </div>
+
+      {hasMore && (
+        <div class="view-more">
+          <button class="view-more_btn" id="load-more-blogs" data-limit={limit} data-project-id={projectId}>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M18 12.998H13V17.998C13 18.2633 12.8946 18.5176 12.7071 18.7052C12.5196 18.8927 12.2652 18.998 12 18.998C11.7348 18.998 11.4804 18.8927 11.2929 18.7052C11.1054 18.5176 11 18.2633 11 17.998V12.998H6C5.73478 12.998 5.48043 12.8927 5.29289 12.7052C5.10536 12.5176 5 12.2633 5 11.998C5 11.7328 5.10536 11.4785 5.29289 11.2909C5.48043 11.1034 5.73478 10.998 6 10.998H11V5.99805C11 5.73283 11.1054 5.47848 11.2929 5.29094C11.4804 5.1034 11.7348 4.99805 12 4.99805C12.2652 4.99805 12.5196 5.1034 12.7071 5.29094C12.8946 5.47848 13 5.73283 13 5.99805V10.998H18C18.2652 10.998 18.5196 11.1034 18.7071 11.2909C18.8946 11.4785 19 11.7328 19 11.998C19 12.2633 18.8946 12.5176 18.7071 12.7052C18.5196 12.8927 18.2652 12.998 18 12.998Z" fill="white"/>
+            </svg>
+            <p>さらに表示</p>
+          </button>
+        </div>
+      )}
+    </div>
+  </div>
+</section> 

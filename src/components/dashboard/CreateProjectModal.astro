@@ -1,0 +1,207 @@
+---
+interface Props {
+  planName: string;
+  projectsCount: number;
+}
+
+const { planName, projectsCount } = Astro.props;
+---
+
+<div id="project-modal" class="modal" style="display: none;">
+  <div class="modal-content">
+    <div class="modal_header">
+      <h2 class="modal_header_title">新しくプロジェクトを作成</h2>
+      <p class="modal_header_desc">
+        {planName === "free" ? 
+          projectsCount >= 1 ? "フリープランでの上限に達しています" : "あと1つ作成できます" :
+          `あと${3 - projectsCount}つ作成できます`}
+      </p>
+      {(planName === "free" && projectsCount >= 1) ? (
+        <button class="upgrade_btn" id="upgrade-btn-modal">
+          アップグレードして作成可能枠を増やす
+        </button>
+      ) : (
+        <button class="upgrade_btn">
+          アップグレードして作成可能枠を増やす
+        </button>
+      )}
+    </div>
+    <form class="project_settings" method="POST">
+      <input type="hidden" name="action" value="create_project" />
+      <div class="project_settings_wrapper">
+        <label for="projectName">プロジェクト名</label>
+        <input 
+          type="text" 
+          name="projectName" 
+          required 
+          disabled={planName === "free" && projectsCount >= 1} 
+        />
+      </div>
+      <div class="project_settings_wrapper">
+        <label for="projectDescription">プロジェクトの説明</label>
+        <textarea
+          name="projectDescription"
+          rows="4"
+          placeholder="どんなプロジェクトか説明してください"
+          disabled={planName === "free" && projectsCount >= 1}
+        ></textarea>
+      </div>
+      <div class="project_settings_btns">
+        <span class="close" id="close-modal">閉じる</span>
+        {(planName === "free" && projectsCount >= 1) ? (
+          <button class="create disabled" type="button" disabled>作成できません</button>
+        ) : (
+          <button class="create" type="submit">作成</button>
+        )}
+      </div>
+    </form>
+  </div>
+</div>
+
+<style lang="scss">
+  .modal {
+    position: fixed;
+    z-index: 1000;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    overflow: auto;
+    background-color: rgba(35, 35, 36, 0.8);
+  }
+  
+  .modal-content {
+    width: 100%;
+    max-width: 760px;
+    margin: 12% auto;
+    padding: 24px;
+    border: 1px solid var(--main-border-color);
+    border-radius: var(--border-radius-m);
+    background-color: var(--sub-bg-color);
+  }
+
+  .modal_header{
+    display: flex;
+    align-items: center;
+
+    &_title{
+      font-size: var(--font-size-m);
+      color: var(--main-font-color);
+    }
+
+    &_desc{
+      font-size: var(--font-size-xs);
+      color: var(--elem-font-color);
+      margin-left: 16px;
+    }
+
+    >.upgrade_btn{
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: var(--font-size-xs);
+      color: var(--sub-font-color);
+      margin-left: auto;
+      text-decoration: underline;
+    }
+  }
+
+  .project_settings{
+    margin-top: 16px;
+    padding-top: 32px;
+    border-top: 1px solid var(--main-border-color);
+
+    &_wrapper{
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+
+      &:nth-of-type(2){
+        margin-top: 24px;
+      }
+
+      >label{
+        font-size: var(--font-size-s);
+        color: var(--sub-font-color);
+      }
+
+      >input{
+        padding: 16px;
+        border: 1px solid var(--main-border-color);
+        background-color: var(--item-bg-color);
+        border-radius: var(--border-radius-m);
+        font-size: var(--font-size-s);
+        color: var(--main-font-color);
+      }
+
+      >textarea{
+        padding: 16px;
+        border: 1px solid var(--main-border-color);
+        background-color: var(--item-bg-color);
+        border-radius: var(--border-radius-m);
+        font-size: var(--font-size-s);
+        color: var(--main-font-color);
+      }
+    }
+
+    &_btns{
+      margin-top: 40px;
+      display: flex;
+      align-items: center;
+      justify-content: right;
+      gap: 16px;
+
+      >span,button{
+        padding: 12px 16px;
+        border-radius: var(--border-radius-m);
+        border: 1px solid var(--main-border-color);
+        font-size: var(--font-size-xs);
+        color: var(--main-font-color);
+        cursor: pointer;
+      }
+    
+      >.create{
+        background-color: var(--accent-bg-color);
+        
+        &.disabled {
+          opacity: 0.5;
+          cursor: not-allowed;
+        }
+      }
+    }
+  }
+</style>
+
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+  const modal = document.getElementById("project-modal");
+  const openModalBtn = document.getElementById("open-modal");
+  const closeModalSpan = document.getElementById("close-modal");
+  const upgradeBtnModal = document.getElementById("upgrade-btn-modal");
+  
+  if (openModalBtn) {
+    openModalBtn.addEventListener("click", () => {
+      modal.style.display = "block";
+    });
+  }
+  
+  if (closeModalSpan) {
+    closeModalSpan.addEventListener("click", () => {
+      modal.style.display = "none";
+    });
+  }
+  
+  window.addEventListener("click", (e) => {
+    if (e.target === modal) {
+      modal.style.display = "none";
+    }
+  });
+  
+  if (upgradeBtnModal) {
+    upgradeBtnModal.addEventListener("click", () => {
+      modal.style.display = "none";
+      window.location.href = "/upgrade-plan";
+    });
+  }
+});
+</script> 

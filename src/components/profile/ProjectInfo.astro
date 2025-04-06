@@ -1,0 +1,147 @@
+---
+interface Props {
+  projectId: string;
+  siteName?: string;
+  description?: string;
+}
+
+const { projectId, siteName = "", description = "" } = Astro.props;
+---
+
+<div class="project-info">
+  <h3 class="section-title">プロジェクト情報</h3>
+  
+  <form id="project-info-form" class="project-info-form">
+    <input type="hidden" name="projectId" value={projectId}>
+    
+    <div class="form-group">
+      <label for="site-name">サイト名</label>
+      <input type="text" id="site-name" name="siteName" class="form-input" value={siteName} placeholder="サイト名を入力">
+    </div>
+    
+    <div class="form-group">
+      <label for="description">サイト説明</label>
+      <textarea id="description" name="description" class="form-textarea" rows="4" placeholder="サイトの説明文を入力してください">{description}</textarea>
+    </div>
+    
+    <button type="submit" class="save-btn">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path d="M19 21H5C4.46957 21 3.96086 20.7893 3.58579 20.4142C3.21071 20.0391 3 19.5304 3 19V5C3 4.46957 3.21071 3.96086 3.58579 3.58579C3.96086 3.21071 4.46957 3 5 3H16L21 8V19C21 19.5304 20.7893 20.0391 20.4142 20.4142C20.0391 20.7893 19.5304 21 19 21Z" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        <path d="M17 21V13H7V21" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        <path d="M7 3V8H15" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+      <span>保存する</span>
+    </button>
+  </form>
+</div>
+
+<script define:vars={{ projectId }}>
+document.addEventListener('DOMContentLoaded', () => {
+  const projectInfoForm = document.getElementById('project-info-form');
+  
+  if (projectInfoForm) {
+    projectInfoForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      
+      const siteNameInput = document.getElementById('site-name');
+      const descriptionInput = document.getElementById('description');
+      
+      if (!siteNameInput || !descriptionInput) return;
+      
+      const siteName = siteNameInput.value.trim();
+      const description = descriptionInput.value.trim();
+      
+      if (!siteName) {
+        alert('サイト名を入力してください');
+        return;
+      }
+      
+      try {
+        const response = await fetch('/api/update-project-info', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            projectId,
+            siteName,
+            description
+          })
+        });
+        
+        if (!response.ok) {
+          throw new Error('プロジェクト情報の更新に失敗しました');
+        }
+        
+        const data = await response.json();
+        
+        if (data.success) {
+          alert('プロジェクト情報を更新しました');
+        } else {
+          alert(data.message || 'プロジェクト情報の更新に失敗しました');
+        }
+      } catch (error) {
+        console.error('プロジェクト情報更新エラー:', error);
+        alert('プロジェクト情報の更新に失敗しました。再度お試しください。');
+      }
+    });
+  }
+});
+</script>
+
+<style>
+.project-info {
+  margin-bottom: 24px;
+}
+
+.section-title {
+  font-size: var(--font-size-m);
+  margin-bottom: 16px;
+  color: var(--main-font-color);
+}
+
+.project-info-form {
+  background-color: var(--item-bg-color);
+  border: 1px solid var(--main-border-color);
+  border-radius: var(--border-radius-m);
+  padding: 16px;
+}
+
+.form-group {
+  margin-bottom: 16px;
+}
+
+.form-group label {
+  display: block;
+  font-size: var(--font-size-xs);
+  color: var(--sub-font-color);
+  margin-bottom: 8px;
+}
+
+.form-input, .form-textarea {
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: var(--border-radius-s);
+  border: 1px solid var(--main-border-color);
+  background-color: var(--sub-bg-color);
+  color: var(--main-font-color);
+  font-size: var(--font-size-s);
+}
+
+.form-textarea {
+  resize: vertical;
+  min-height: 100px;
+}
+
+.save-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 18px;
+  background-color: var(--accent-bg-color);
+  color: white;
+  border-radius: var(--border-radius-m);
+  font-size: var(--font-size-s);
+  margin-top: 8px;
+}
+</style> 

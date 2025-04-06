@@ -1,0 +1,166 @@
+---
+interface Props {
+  planName: string;
+  projectCount: number;
+  dataUsage: {
+    current: number;
+    max: number;
+  };
+}
+
+const { planName, projectCount, dataUsage } = Astro.props;
+---
+
+<div class="box first">
+  <div class="inner">
+    <div class="box_header">
+      <h2 class="box_header_label">フリープラン</h2>
+      <a href="/" class="box_header_btn">他のプランを見る</a>
+    </div>
+    <div class="box_plan-list">
+      <div class="box_plan-item">
+        <p class="box_plan-item_label">料金</p>
+        <div class="box_plan-item_contents">
+          <p class="box_plan-item_text">
+            <strong class="strong">無料</strong>
+          </p>
+          <div class="box_plan-item_bar">
+            <span class="box_plan-item_bar_elem"></span>
+          </div>
+        </div>
+      </div>
+      <div class="box_plan-item">
+        <p class="box_plan-item_label">プロジェクト数</p>
+        <div class="box_plan-item_contents">
+          <p class="box_plan-item_text">
+            <strong class="strong">{projectCount}</strong>
+            <span>/</span>
+            <span>{planName === "free" ? 1 : 3}</span>
+          </p>
+          <div class="box_plan-item_bar">
+            <span class="box_plan-item_bar_elem" style={`width: ${Math.min(projectCount / (planName === "free" ? 1 : 3) * 100, 100)}%`}></span>
+          </div>
+        </div>
+      </div>
+      <div class="box_plan-item">
+        <p class="box_plan-item_label">総データ使用量</p>
+        <div class="box_plan-item_contents">
+          <p class="box_plan-item_text">
+            <strong class="strong">{dataUsage.current}</strong>
+            <span>GB</span>
+            <span>/</span>
+            <span>{dataUsage.max}</span>
+            <span>GB</span>
+          </p>
+          <div class="box_plan-item_bar">
+            <span class="box_plan-item_bar_elem" style={`width: ${Math.min(dataUsage.current / dataUsage.max * 100, 100)}%`}></span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<style lang="scss">
+  .box{
+    width: 100%;
+    background-color: var(--sub-bg-color);
+    border: 1px solid var(--main-border-color);
+    border-radius: var(--border-radius-m);
+    margin-top: 16px;
+
+    &.first {
+      // margin-top: 16px;
+    }
+
+    >.inner{
+      padding: 16px;
+    }
+
+    &_header{
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+
+      &_label{
+        font-size: var(--font-size-s);
+        color: var(--sub-font-color);
+        font-weight: 500;
+      }
+      
+      &_btn{
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 12px 16px;
+        border-radius: var(--border-radius-s);
+        background-color: var(--accent-bg-color);
+        color: var(--main-font-color);
+        font-size: var(--font-size-xxs);
+      }
+    }
+
+    &_plan-{
+      &list{
+        height: 96px;
+        margin-top: 16px;
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+        gap: 16px;
+      }
+      
+      &item{
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        padding: 12px;
+        background-color: var(--item-bg-color);
+        border: 1px solid var(--main-border-color);
+        border-radius: var(--border-radius-m);
+        
+        &_label{
+          font-size: var(--font-size-xs);
+          color: var(--sub-font-color);
+        }
+        
+        &_contents{
+          width: 100%;
+          display: flex;
+          flex: 1;
+          gap: 12px;
+          margin-top: 12px;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+        }
+        
+        &_text{
+          font-size: var(--font-size-xs);
+          color: var(--main-font-color);
+          
+          >.strong{
+            font-weight: 500;
+            font-size: var(--font-size-m);
+          }
+        }
+        
+        &_bar{
+          position: relative;
+          width: 100%;
+          height: 8px;
+          background-color: var(--elem-bg-color);
+          border-radius: 100px;
+          
+          &_elem{
+            position: absolute;
+            width: 30%;
+            height: 100%;
+            background-color: var(--accent2-bg-color);
+            border-radius: 100px;
+            z-index: 10;
+          }
+        }
+      }
+    }
+  }
+</style> 

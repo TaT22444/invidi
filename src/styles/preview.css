@@ -185,7 +185,7 @@
   border: 1px solid var(--main-border-color);
   border-radius: var(--border-radius-m);
   margin-top: 24px;
-  margin-bottom: 80px;
+  margin-bottom: 120px;
 }
 
 .box > .inner {

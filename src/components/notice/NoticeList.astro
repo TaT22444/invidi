@@ -1,0 +1,83 @@
+---
+import type { NoticeItem } from '../../services/projectService';
+
+interface Props {
+  notices: NoticeItem[];
+  hasMore: boolean;
+  projectId: string;
+  limit?: number;
+}
+
+const { notices, hasMore, projectId, limit = 3 } = Astro.props;
+
+// 日付フォーマット関数
+function formatDate(date: Date): string {
+  return new Intl.DateTimeFormat('ja-JP', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+  }).format(date).replace(/\//g, '/');
+}
+---
+
+<section class="cms-container">
+  <div class="inner">
+    <h3 class="cms-container_title">お知らせ</h3>
+    <ul class="notice_list">
+      {notices.length > 0 ? (
+        notices.map((notice) => (
+          <li class="notice_item">
+            <div class="notice_item_info">
+              <p>
+                <span>{notice.tag}</span>
+                <span class="slash"></span>
+                <span>{formatDate(notice.createdAt)}</span>
+              </p>
+              <h4 class="notice_item_title">
+                {notice.title}
+              </h4>
+            </div>
+            <div class="notice_item_btns">
+              <button class="notice_item_open" data-notice-id={notice.id}>
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <g clip-path="url(#clip0_623_115)">
+                    <path fill-rule="evenodd" clip-rule="evenodd" d="M10.4712 7.52879C10.5962 7.65381 10.6664 7.82334 10.6664 8.00012C10.6664 8.1769 10.5962 8.34644 10.4712 8.47145L6.6999 12.2428C6.63841 12.3065 6.56484 12.3572 6.48351 12.3922C6.40217 12.4271 6.31469 12.4455 6.22617 12.4463C6.13765 12.4471 6.04986 12.4302 5.96793 12.3967C5.886 12.3631 5.81157 12.3136 5.74897 12.251C5.68638 12.1885 5.63688 12.114 5.60336 12.0321C5.56983 11.9502 5.55297 11.8624 5.55374 11.7739C5.55451 11.6853 5.5729 11.5979 5.60784 11.5165C5.64277 11.4352 5.69356 11.3616 5.75724 11.3001L9.05724 8.00012L5.75724 4.70012C5.6358 4.57439 5.5686 4.40598 5.57012 4.23119C5.57164 4.05639 5.64175 3.88918 5.76536 3.76557C5.88896 3.64197 6.05617 3.57186 6.23097 3.57034C6.40577 3.56882 6.57417 3.63601 6.6999 3.75745L10.4712 7.52879Z" fill="white"/>
+                  </g>
+                  <defs>
+                    <clipPath id="clip0_623_115">
+                      <rect width="16" height="16" fill="white"/>
+                    </clipPath>
+                  </defs>
+                </svg>        
+              </button>
+            </div>
+          </li>
+        ))
+      ) : (
+        <li class="empty">
+          <span class="empty_label">お知らせはありません！</span>
+        </li>
+      )}
+    </ul>
+    <div class="view-actions">
+      <div class="view-less" style="display: none;">
+        <button class="view-less_btn" id="show-less-notices">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M19 11H5C4.73478 11 4.48043 11.1054 4.29289 11.2929C4.10536 11.4804 4 11.7348 4 12C4 12.2652 4.10536 12.5196 4.29289 12.7071C4.48043 12.8946 4.73478 13 5 13H19C19.2652 13 19.5196 12.8946 19.7071 12.7071C19.8946 12.5196 20 12.2652 20 12C20 11.7348 19.8946 11.4804 19.7071 11.2929C19.5196 11.1054 19.2652 11 19 11Z" fill="white"/>
+          </svg>
+          <p>表示を減らす</p>
+        </button>
+      </div>
+      {notices.length > 0 && hasMore && (
+        <div class="view-more">
+          <button class="view-more_btn" id="load-more-notices" data-limit={limit} data-project-id={projectId}>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M18 12.998H13V17.998C13 18.2633 12.8946 18.5176 12.7071 18.7052C12.5196 18.8927 12.2652 18.998 12 18.998C11.7348 18.998 11.4804 18.8927 11.2929 18.7052C11.1054 18.5176 11 18.2633 11 17.998V12.998H6C5.73478 12.998 5.48043 12.8927 5.29289 12.7052C5.10536 12.5176 5 12.2633 5 11.998C5 11.7328 5.10536 11.4785 5.29289 11.2909C5.48043 11.1034 5.73478 10.998 6 10.998H11V5.99805C11 5.73283 11.1054 5.47848 11.2929 5.29094C11.4804 5.1034 11.7348 4.99805 12 4.99805C12.2652 4.99805 12.5196 5.1034 12.7071 5.29094C12.8946 5.47848 13 5.73283 13 5.99805V10.998H18C18.2652 10.998 18.5196 11.1034 18.7071 11.2909C18.8946 11.4785 19 11.7328 19 11.998C19 12.2633 18.8946 12.5176 18.7071 12.7052C18.5196 12.8927 18.2652 12.998 18 12.998Z" fill="white"/>
+            </svg>
+            <p>さらに表示</p>
+          </button>
+        </div>
+      )}
+    </div>
+  </div>
+</section> 

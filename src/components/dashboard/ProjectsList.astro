@@ -1,0 +1,351 @@
+---
+interface Project {
+  id: string;
+  name: string;
+  followers?: number;
+  currentPages?: number;
+  maxPages?: number;
+}
+
+interface Props {
+  projects: Project[];
+  planName: string;
+}
+
+const { projects, planName } = Astro.props;
+---
+
+<div class="box">
+  <div class="inner">
+    <div class="box_header">
+      <h2 class="box_header_label">
+        <span>プロジェクト</span>
+        <span class="box_header_label_elem">{projects.length}</span>
+        <span>/</span>
+        <span>{planName === "free" ? 1 : 3}</span>
+      </h2>
+      
+      {/* フリープランで1つ以上のプロジェクトがある場合は「proプランでさらに作成」ボタンを表示 */}
+      {(planName === "free" && projects.length >= 1) ? (
+        <button id="upgrade-plan-btn" class="box_header_btn upgrade-btn">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path
+              d="M18 12.998H13V17.998C13 18.2633 12.8946 18.5176 12.7071 18.7052C12.5196 18.8927 12.2652 18.998 12 18.998C11.7348 18.998 11.4804 18.8927 11.2929 18.7052C11.1054 18.5176 11 18.2633 11 17.998V12.998H6C5.73478 12.998 5.48043 12.8927 5.29289 12.7052C5.10536 12.5176 5 18.2633 5 11.998C5 11.7328 5.10536 11.4785 5.29289 11.2909C5.48043 11.1034 5.73478 10.998 6 10.998H11V5.99805C11 5.73283 11.1054 5.47848 11.2929 5.29094C11.4804 5.1034 11.7348 4.99805 12 4.99805C12.2652 4.99805 12.5196 5.1034 12.7071 5.29094C12.8946 5.47848 13 5.73283 13 5.99805V10.998H18C18.2652 10.998 18.5196 11.1034 18.7071 11.2909C18.8946 11.4785 19 11.7328 19 11.998C19 12.2633 18.8946 12.5176 18.7071 12.7052C18.5196 12.8927 18.2652 12.998 18 12.998Z"
+              fill="white"
+            />
+          </svg>
+          <p>proプランでさらに作成</p>
+        </button>
+      ) : (
+        <button id="open-modal" class="box_header_btn">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path
+              d="M18 12.998H13V17.998C13 18.2633 12.8946 18.5176 12.7071 18.7052C12.5196 18.8927 12.2652 18.998 12 18.998C11.7348 18.998 11.4804 18.8927 11.2929 18.7052C11.1054 18.5176 11 18.2633 11 17.998V12.998H6C5.73478 12.998 5.48043 12.8927 5.29289 12.7052C5.10536 12.5176 5 18.2633 5 11.998C5 11.7328 5.10536 11.4785 5.29289 11.2909C5.48043 11.1034 5.73478 10.998 6 10.998H11V5.99805C11 5.73283 11.1054 5.47848 11.2929 5.29094C11.4804 5.1034 11.7348 4.99805 12 4.99805C12.2652 4.99805 12.5196 5.1034 12.7071 5.29094C12.8946 5.47848 13 5.73283 13 5.99805V10.998H18C18.2652 10.998 18.5196 11.1034 18.7071 11.2909C18.8946 11.4785 19 11.7328 19 11.998C19 12.2633 18.8946 12.5176 18.7071 12.7052C18.5196 12.8927 18.2652 12.998 18 12.998Z"
+              fill="white"
+            />
+          </svg>
+          <p>新しいプロジェクト</p>
+        </button>
+      )}
+    </div>
+    <div class="box_search">
+      <div class="box_search_wrapper">
+        <button>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
+            xmlns="http://www.w3.org/2000/svg"
+          >
+            <path
+              d="M16.893 16.92L19.973 20M19 11.5C19 13.4891 18.2098 15.3968 16.8033 16.8033C15.3968 18.2098 13.4891 19 11.5 19C9.51088 19 7.60322 18.2098 6.1967 16.8033C4.79018 15.3968 4 13.4891 4 11.5C4 9.51088 4.79018 7.60322 6.1967 6.1967C7.60322 4.79018 9.51088 4 11.5 4C13.4891 4 15.3968 4.79018 16.8033 6.1967C18.2098 7.60322 19 9.51088 19 11.5Z"
+              stroke="white"
+              stroke-width="1.5"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            />
+          </svg>
+        </button>
+        <input type="text" placeholder="プロジェクトを検索" />
+      </div>
+    </div>
+    {projects.length > 0 ? (
+      <div class="box_project-list">
+        {projects.map((project) => (
+          <div class="box_project-item" data-project-id={project.id}>
+            <div class="box_project-item_img"></div>
+            <h3 class="box_project-item_name">{project.name}</h3>
+            <div class="box_project-item_right">
+              <div class="box_project-item_right_wrapper">
+                <p class="box_project-item_right_wrapper_label">フォロワー数</p>
+                <p class="box_project-item_right_wrapper_label value">
+                  <strong class="strong">{project.followers || 0}</strong>
+                  <span>人</span>
+                </p>
+              </div>
+              <div class="box_project-item_right_wrapper">
+                <p class="box_project-item_right_wrapper_label">ページ数</p>
+                <p class="box_project-item_right_wrapper_label value">
+                  <strong class="strong">{project.currentPages || 0}</strong>
+                  <span>/</span>
+                  <span>{project.maxPages || 0}</span>
+                </p>
+              </div>
+            </div>
+            <div class="form_item_btns">
+              <button
+                class="form_item_icon delete_confirm_btn"
+                type="button"
+                data-project-id={project.id}
+                data-project-name={project.name}
+              >
+                <svg width="16" height="16" viewBox="0 0 20 20"
+                  fill="none" xmlns="http://www.w3.org/2000/svg"
+                >
+                  <path
+                    d="M8.33268 5.00033H11.666C11.666 4.5583 11.4904 4.13437 11.1779 3.82181C10.8653 3.50925 10.4414 3.33366 9.99935 3.33366C9.55732 3.33366 9.1334 3.50925 8.82084 3.82181C8.50828 4.13437 8.33268 4.5583 8.33268 5.00033ZM6.66602 5.00033C6.66602 4.11627 7.0172 3.26842 7.64233 2.6433C8.26745 2.01818 9.11529 1.66699 9.99935 1.66699C10.8834 1.66699 11.7313 2.01818 12.3564 2.6433C12.9815 3.26842 13.3327 4.11627 13.3327 5.00033H17.4993C17.7204 5.00033 17.9323 5.08812 18.0886 5.2444C18.2449 5.40068 18.3327 5.61265 18.3327 5.83366C18.3327 6.05467 18.2449 6.26663 18.0886 6.42291C17.9323 6.57919 17.7204 6.66699 17.4993 6.66699H16.7643L16.026 15.2837C15.955 16.1157 15.5743 16.8908 14.9592 17.4556C14.3441 18.0204 13.5394 18.3338 12.7043 18.3337H7.29435C6.45927 18.3338 5.65458 18.0204 5.03947 17.4556C4.42437 16.8908 4.04366 16.1157 3.97268 15.2837L3.23435 6.66699H2.49935C2.27834 6.66699 2.06637 6.57919 1.91009 6.42291C1.75381 6.26663 1.66602 6.05467 1.66602 5.83366C1.66602 5.61265 1.75381 5.40068 1.91009 5.2444C2.06637 5.08812 2.27834 5.00033 2.49935 5.00033H6.66602Z"
+                    fill="#C4C4C4"
+                  />
+                </svg>
+              </button>
+              <button class="form_item_btn">
+                <svg width="16" height="16" viewBox="0 0 16 16"
+                  fill="none" xmlns="http://www.w3.org/2000/svg"
+                >
+                  <g clip-path="url(#clip0_623_115)">
+                    <path
+                      fill-rule="evenodd"
+                      clip-rule="evenodd"
+                      d="M10.4712 7.52879C10.5962 7.65381 10.6664 7.82334 10.6664 8.00012C10.6664 8.1769 10.5962 8.34644 10.4712 8.47145L6.6999 12.2428C6.63841 12.3065 6.56484 12.3572 6.48351 12.3922C6.40217 12.4271 6.31469 12.4455 6.22617 12.4463C6.13765 12.4471 6.04986 12.4302 5.96793 12.3967C5.886 12.3631 5.81157 12.3136 5.74897 12.251C5.68638 12.1885 5.63688 12.114 5.60336 12.0321C5.56983 11.9502 5.55297 11.8624 5.55374 11.7739C5.55451 11.6853 5.5729 11.5979 5.60784 11.5165C5.64277 11.4352 5.69356 11.3616 5.75724 11.3001L9.05724 8.00012L5.75724 4.70012C5.6358 4.57439 5.5686 4.40598 5.57012 4.23119C5.57164 4.05639 5.64175 3.88918 5.76536 3.76557C5.88896 3.64197 6.05617 3.57186 6.23097 3.57034C6.40577 3.56882 6.57417 3.63601 6.6999 3.75745L10.4712 7.52879Z"
+                      fill="white"
+                    />
+                  </g>
+                  <defs>
+                    <clipPath id="clip0_623_115">
+                      <rect width="16" height="16" fill="white" />
+                    </clipPath>
+                  </defs>
+                </svg>
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+    ) : (
+      <p class="no-projects">プロジェクトを作成し、あなただけのwebサイトを作ろう！</p>
+    )}
+  </div>
+</div>
+
+<style lang="scss">
+  .box{
+    width: 100%;
+    background-color: var(--sub-bg-color);
+    border: 1px solid var(--main-border-color);
+    border-radius: var(--border-radius-m);
+    margin-top: 16px;
+
+    >.inner{
+      padding: 16px;
+    }
+
+    &_header{
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+
+      &_label{
+        font-size: var(--font-size-s);
+        color: var(--sub-font-color);
+        font-weight: 500;
+
+        &_elem{
+          margin-left: 8px;
+        }
+      }
+      &_btn{
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 12px 16px;
+        border-radius: var(--border-radius-s);
+        background-color: var(--accent-bg-color);
+        color: var(--main-font-color);
+        font-size: var(--font-size-xxs);
+      }
+    }
+
+    &_search{
+      margin-top: 16px;
+      display: flex;
+      align-items: center;
+
+      &_wrapper{
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 8px 16px;
+        border: 1px solid var(--sub-border-color);
+        border-radius: var(--border-radius-m);
+        
+        >button{
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          border-radius: var(--border-radius-s);
+          width: 24px;
+          height: 24px;
+          transition: all .1s;
+
+          &:hover{
+            background-color: var(--btn-bg-color);
+            transition: all .1s;
+          }
+        }
+        >input{
+          height: 100%;
+          font-size: var(--font-size-s);
+          color: var(--main-font-color);
+        }
+      }
+    }
+
+    &_project-{      
+      &list{
+        margin-top: 24px;
+        width: 100%;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+      &item{
+        position: relative;
+        width: 100%;
+        display: flex;
+        align-items: center;
+        padding: 12px;
+        border-radius: var(--border-radius-m);
+        cursor: pointer;
+        transition: all .3s;
+        
+        &:hover{
+          background-color: var(--item-bg-color);
+          transition: all .3s;
+        }
+
+        &_img{
+          aspect-ratio: 16/9;
+          width: 114px;
+          background-color: var(--elem-bg-color);
+          border-radius: var(--border-radius-s);
+        }
+        &_name{
+          margin-left: 16px;
+          font-size: var(--font-size-s);
+          color: var(--main-font-color);
+        }
+        &_right{
+          flex: 1;
+          position: relative;
+          display: flex;
+          align-items: center;
+          gap: 16px;
+          margin-left: 16px;
+          padding-left: 16px;
+          
+          &::before{
+            content: "";
+            position: absolute;
+            left: 0;
+            width: 1px;
+            height: 16px;
+            background-color: var(--sub-border-color);
+          }
+
+          &_wrapper{
+            display: flex;
+            align-items: center;
+            gap: 8px;
+
+            >.value{
+              background-color: var(--btn-bg-color);
+              padding: 8px 8px;
+              border-radius: var(--border-radius-s);
+            }
+
+            &_label{
+              font-size: var(--font-size-xxs);
+              color: var(--sub-font-color);
+              font-weight: 400;
+              >.strong{
+                font-size: var(--font-size-xs);
+                font-weight: 400;
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+
+  .form_item_btns{
+    display: flex;
+    align-items: center;
+    gap: 8px;
+
+    >button{
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 32px;
+      height: 32px;
+      border-radius: var(--border-radius-s);
+    }
+  }
+
+  .form_item_icon{
+    background-color: var(--btn-bg-color);
+    border: 1px solid var(--main-border-color);
+  }
+
+  .form_item_btn{
+    width: 20px;
+    height: 20px;
+  }
+
+  .no-projects{
+    margin-top: 24px;
+    padding: 40px 0 64px;
+    text-align: center;
+    font-size: var(--font-size-s);
+    color: var(--elem-font-color);
+  }
+
+  .upgrade-btn {
+    background-color: var(--accent2-bg-color, #7856ff) !important;
+  }
+</style>
+
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+  document.querySelectorAll('.box_project-item').forEach((item) => {
+    item.addEventListener('click', (event) => {
+      const projectId = item.getAttribute('data-project-id');
+      window.location.href = '/projects/' + projectId;
+    });
+  });
+
+  const iconButtons = document.querySelectorAll('.form_item_icon, .form_item_btn');
+  iconButtons.forEach((btn) => {
+    btn.addEventListener('click', (event) => {
+      // 親要素へのクリックを伝搬しない＝カードのクリックイベントをキャンセル
+      event.stopPropagation();
+    });
+  });
+  
+  // アップグレードボタンイベント
+  const upgradePlanBtn = document.getElementById("upgrade-plan-btn");
+  if (upgradePlanBtn) {
+    upgradePlanBtn.addEventListener("click", () => {
+      window.location.href = "/upgrade-plan";
+    });
+  }
+});
+</script> 
