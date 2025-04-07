@@ -1,6 +1,9 @@
 /**
  * リクエストからクッキーを安全に取得する関数
  */
+
+const isProduction = process.env.NODE_ENV === 'production';
+
 export function getCookies(request) {
   try {
     const cookieHeader = request.headers.get("cookie") || "";
@@ -34,11 +37,10 @@ export const SESSION_DURATIONS = {
  * クッキーを設定するレスポンスヘッダーを生成
  */
 export function setCookieHeader(name, value, options = {}) {
-  // デフォルトの有効期間を7日間に延長
   const { maxAge = SESSION_DURATIONS.ONE_WEEK, path = "/" } = options;
-  
+
   return {
-    "Set-Cookie": `${name}=${value}; Path=${path}; Max-Age=${maxAge}; SameSite=Lax; Secure;`
+    "Set-Cookie": `${name}=${value}; Path=${path}; Max-Age=${maxAge}; SameSite=Lax;${isProduction ? ' Secure;' : ''}`
   };
 }
 
@@ -46,14 +48,13 @@ export function setCookieHeader(name, value, options = {}) {
  * 認証用クッキーを設定するヘルパー関数
  */
 export function setAuthCookieHeader(name, value, options = {}) {
-  // 認証用クッキーは90日間の有効期間をデフォルトに
   const { 
     maxAge = SESSION_DURATIONS.THREE_MONTHS,
     path = "/",
     httpOnly = true
   } = options;
-  
+
   return {
-    "Set-Cookie": `${name}=${value}; Path=${path}; Max-Age=${maxAge}; SameSite=Lax; Secure; ${httpOnly ? 'HttpOnly;' : ''}`
+    "Set-Cookie": `${name}=${value}; Path=${path}; Max-Age=${maxAge}; SameSite=Lax;${isProduction ? ' Secure;' : ''} ${httpOnly ? 'HttpOnly;' : ''}`
   };
-} 
+}

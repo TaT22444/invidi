@@ -1,0 +1,974 @@
+---
+import { formatDate } from '../utils/formatDate';
+// import { getProjectProducts } from '../utils/productUtils';
+// import ProductList from './ProductsList.astro';
+
+// プロパティを受け取る
+interface Props {
+  projectId: string;
+  existingTags: string[];
+  productsList: any[];
+  csrfToken?: string;
+}
+
+const { 
+  projectId = "", 
+  existingTags = [], 
+  productsList = [],
+  csrfToken = ""
+} = Astro.props;
+---
+
+<div class="cms_box cms-panel" id="products-panel" style="display: none;">
+  <section class="box">
+    <div class="inner">
+      <form class="cms" method="POST" enctype="multipart/form-data" id="product-form">
+        <input type="hidden" name="action" value="create_product" />
+        <input type="hidden" name="csrf_token" value={csrfToken} />
+        <div class="cms-header">
+          <p class="cms-header_title">EC商品登録</p>
+          <div class="box_btn_wrapper">
+            <button 
+              type="submit" 
+              name="submitType" 
+              value="draft" 
+              class="box_btn">下書き保存</button>
+            <button 
+              type="submit" 
+              name="submitType" 
+              value="publish" 
+              class="box_btn save">出品する</button>
+          </div>
+        </div>
+        <div class="cms-body">
+          <div class="cms-body_input-wrapper">
+            <label for="product-title">商品名</label>
+            <input type="text" id="product-title" name="productTitle" placeholder="商品名を入力してください">
+          </div>
+          
+          <div class="cms-body_input-wrapper">
+            <label for="product-price">価格（円）</label>
+            <input type="number" id="product-price" name="productPrice" min="0" placeholder="価格を入力してください">
+          </div>
+          
+          <div class="cms-body_input-wrapper">
+            <label for="product-stock">在庫数</label>
+            <input type="number" id="product-stock" name="productStock" min="0" placeholder="在庫数を入力してください">
+          </div>
+          
+          <div class="cms-body_input-wrapper">
+            <label for="product-image">商品画像</label>
+            <div class="image-upload-wrapper">
+              <div class="image-preview" id="product-image-preview">
+                <div class="upload-placeholder">
+                  <svg width="32" height="32" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M19 3H5C3.9 3 3 3.9 3 5V19C3 20.1 3.9 21 5 21H19C20.1 21 21 20.1 21 19V5C21 3.9 20.1 3 19 3ZM19 19H5V5H19V19ZM13.96 12.29L11.21 15.83L9.25 13.47L6.5 17H17.5L13.96 12.29Z" fill="#C4C4C4"/>
+                  </svg>
+                  <p>クリックして画像をアップロード</p>
+                </div>
+                <img src="" alt="" style="display: none;" id="preview-img">
+              </div>
+              <input type="file" id="product-image" name="productImage" accept="image/*" style="display: none;">
+            </div>
+          </div>
+          
+          <div class="cms-body_input-wrapper">
+            <label for="product-description">商品説明</label>
+            <textarea id="product-description" name="productDescription" rows="6" placeholder="商品の説明を入力してください"></textarea>
+          </div>
+          
+          <fieldset id="product-tag-fieldset">
+            <p class="label">商品カテゴリ</p>
+              {existingTags && existingTags.map((tag) => (
+                <div class="cms-body_wrapper" data-key={String(tag)}>
+                  <input
+                    type="checkbox"
+                    id={`product-tag-${tag}`}
+                    name="productTags"
+                    value={String(tag)}
+                  />
+                  <label for={`product-tag-${tag}`}>{tag}</label>
+                </div>
+              ))}
+            <button type="button" id="addProductTagBtn" class="cms-body_wrapper_btn">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M18 12.998H13V17.998C13 18.2633 12.8946 18.5176 12.7071 18.7052C12.5196 18.8927 12.2652 18.998 12 18.998C11.7348 18.998 11.4804 18.8927 11.2929 18.7052C11.1054 18.5176 11 18.2633 11 17.998V12.998H6C5.73478 12.998 5.48043 12.8927 5.29289 12.7052C5.10536 12.5176 5 12.2633 5 11.998C5 11.7328 5.10536 11.4785 5.29289 11.2909C5.48043 11.1034 5.73478 10.998 6 10.998H11V5.99805C11 5.73283 11.1054 5.47848 11.2929 5.29094C11.4804 5.1034 11.7348 4.99805 12 4.99805C12.2652 4.99805 12.5196 5.1034 12.7071 5.29094C12.8946 5.47848 13 5.73283 13 5.99805V10.998H18C18.2652 10.998 18.5196 11.1034 18.7071 11.2909C18.8946 11.4785 19 11.7328 19 11.998C19 12.2633 18.8946 12.5176 18.7071 12.7052C18.5196 12.8927 18.2652 12.998 18 12.998Z" fill="white"/>
+              </svg>
+              <p>カテゴリを追加</p>
+            </button>
+          </fieldset>
+          
+          <div class="base-info">
+            <p class="base-info-title">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M12 2C6.48 2 2 6.48 2 12C2 17.52 6.48 22 12 22C17.52 22 22 17.52 22 12C22 6.48 17.52 2 12 2ZM12 20C7.59 20 4 16.41 4 12C4 7.59 7.59 4 12 4C16.41 4 20 7.59 20 12C20 16.41 16.41 20 12 20ZM11 7H13V9H11V7ZM11 11H13V17H11V11Z" fill="#999999"/>
+              </svg>
+              BASE連携について
+            </p>
+            <p class="base-info-text">このページで登録した商品は、BASE設定が完了している場合に自動的にBASEストアに同期されます。</p>
+            <a href={`/projects/${projectId}/cms/products/base-settings`} class="base-settings-link">
+              BASE連携設定を確認する
+            </a>
+          </div>
+        </div>
+      </form>
+    </div>
+  </section>
+  <section class="posted">
+    <h2 class="posted_label">商品一覧</h2>
+    <div class="option_box">
+      <div class="subject_wrapper" id="product-status-wrapper">
+        <button class="active">公開中</button>
+        <button>下書き</button>
+      </div>
+      <div class="option_wrapper" id="product-option-wrapper">
+        <div class="option">
+          <input type="radio" checked id="product-tag-all" name="product-option" value="すべて">
+          <label for="product-tag-all">すべて</label>
+        </div>
+        {existingTags && existingTags.map((tag, index) => (
+          <div class="option">
+            <input type="radio" id={`product-filter-tag-${index}`} name="product-option" value={tag}>
+            <label for={`product-filter-tag-${index}`}>{tag}</label>
+          </div>
+        ))}
+      </div>
+    </div>
+    
+    <div class="products-grid">
+      {productsList.length > 0 ? (
+        productsList.map((product) => (
+          <div class="product-card" data-id={product.id} data-status={product.status || 'public'} data-tags={JSON.stringify(product.tags || [])}>
+            <div class="product-image">
+              {product.imageUrl ? (
+                <img src={product.imageUrl} alt={product.title} />
+              ) : (
+                <div class="no-image">No Image</div>
+              )}
+              <div class="product-status">
+                {product.status === 'draft' ? (
+                  <span class="badge draft">下書き</span>
+                ) : (
+                  <span class="badge public">公開中</span>
+                )}
+                {product.baseStatus && (
+                  <span class={`badge base ${product.baseStatus === 'エラー' ? 'error' : ''}`}>
+                    {product.baseStatus}
+                  </span>
+                )}
+              </div>
+            </div>
+            
+            <div class="product-info">
+              <p class="product-tags">
+                {product.tags && product.tags.length > 0
+                  ? product.tags.join(", ")
+                  : "未分類"}
+              </p>
+              <h3 class="product-title">{product.title || "(無題)"}</h3>
+              <p class="product-price">{product.price ? `${product.price.toLocaleString()}円` : "価格未設定"}</p>
+              <p class="product-stock">在庫: {product.stock || 0}個</p>
+            </div>
+            
+            <div class="product-actions">
+              <button class="swich" id={`product-draft-btn-${product.id}`} style={product.status === 'public' ? '' : 'display: none;'}>
+                <p>下書きに移動</p>
+              </button>
+              <button class="swich" id={`product-publish-btn-${product.id}`} style={product.status === 'draft' ? '' : 'display: none;'}>
+                <p>公開する</p>
+              </button>
+              <button class="posted_item_btn edit" data-product-id={product.id}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <path fill-rule="evenodd" clip-rule="evenodd" d="M21.4559 5.41632C21.5509 5.56052 21.5932 5.7331 21.5757 5.9049C21.5582 6.07671 21.482 6.23721 21.3599 6.35932L12.1669 15.5513C12.0728 15.6453 11.9555 15.7126 11.8269 15.7463L7.99787 16.7463C7.8713 16.7793 7.7383 16.7787 7.61206 16.7444C7.48583 16.7101 7.37076 16.6434 7.27826 16.5509C7.18577 16.4584 7.11908 16.3434 7.0848 16.2171C7.05053 16.0909 7.04986 15.9579 7.08287 15.8313L8.08287 12.0033C8.11277 11.8887 8.16776 11.7821 8.24387 11.6913L17.4709 2.47032C17.6115 2.32987 17.8021 2.25098 18.0009 2.25098C18.1996 2.25098 18.3902 2.32987 18.5309 2.47032L21.3599 5.29832C21.3948 5.33516 21.4269 5.3746 21.4559 5.41632ZM19.7689 5.82832L18.0009 4.06132L9.48287 12.5793L8.85787 14.9723L11.2509 14.3473L19.7689 5.82832Z" fill="#C4C4C4"/>
+                  <path d="M19.641 17.1601C19.9143 14.824 20.0016 12.47 19.902 10.1201C19.8997 10.0647 19.9089 10.0094 19.929 9.95778C19.9491 9.90614 19.9798 9.85925 20.019 9.82008L21.003 8.83608C21.0299 8.80904 21.064 8.79033 21.1013 8.78222C21.1385 8.77411 21.1774 8.77693 21.2131 8.79034C21.2488 8.80375 21.2798 8.82719 21.3025 8.85783C21.3252 8.88847 21.3386 8.92502 21.341 8.96308C21.5257 11.7543 21.4554 14.5566 21.131 17.3351C20.895 19.3571 19.271 20.9421 17.258 21.1671C13.7633 21.5538 10.2367 21.5538 6.74201 21.1671C4.73001 20.9421 3.10501 19.3571 2.86901 17.3351C2.45512 13.7905 2.45512 10.2097 2.86901 6.66508C3.10501 4.64308 4.72901 3.05808 6.74201 2.83308C9.39446 2.54012 12.0667 2.46888 14.731 2.62008C14.7691 2.62281 14.8057 2.63642 14.8363 2.65929C14.867 2.68215 14.8904 2.71332 14.9039 2.7491C14.9173 2.78487 14.9203 2.82376 14.9123 2.86115C14.9044 2.89854 14.8859 2.93287 14.859 2.96008L13.866 3.95208C13.8272 3.99092 13.7808 4.02136 13.7297 4.04149C13.6786 4.06162 13.6239 4.07101 13.569 4.06908C11.3458 3.99293 9.11993 4.07815 6.90901 4.32408C6.26295 4.39558 5.65986 4.6828 5.19717 5.13933C4.73447 5.59586 4.43919 6.19504 4.35901 6.84008C3.95787 10.2684 3.95787 13.7318 4.35901 17.1601C4.43919 17.8051 4.73447 18.4043 5.19717 18.8608C5.65986 19.3174 6.26295 19.6046 6.90901 19.6761C10.264 20.0511 13.736 20.0511 17.092 19.6761C17.7381 19.6046 18.3412 19.3174 18.8039 18.8608C19.2666 18.4043 19.5608 17.8051 19.641 17.1601Z" fill="#C4C4C4"/>
+                </svg>                         
+              </button>
+              <button class="posted_item_btn delete" data-product-id={product.id}>
+                <svg width="16" height="16" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M8.33268 5.00033H11.666C11.666 4.5583 11.4904 4.13437 11.1779 3.82181C10.8653 3.50925 10.4414 3.33366 9.99935 3.33366C9.55732 3.33366 9.1334 3.50925 8.82084 3.82181C8.50828 4.13437 8.33268 4.5583 8.33268 5.00033ZM6.66602 5.00033C6.66602 4.11627 7.0172 3.26842 7.64233 2.6433C8.26745 2.01818 9.11529 1.66699 9.99935 1.66699C10.8834 1.66699 11.7313 2.01818 12.3564 2.6433C12.9815 3.26842 13.3327 4.11627 13.3327 5.00033H17.4993C17.7204 5.00033 17.9323 5.08812 18.0886 5.2444C18.2449 5.40068 18.3327 5.61265 18.3327 5.83366C18.3327 6.05467 18.2449 6.26663 18.0886 6.42291C17.9323 6.57919 17.7204 6.66699 17.4993 6.66699H16.7643L16.026 15.2837C15.955 16.1157 15.5743 16.8908 14.9592 17.4556C14.3441 18.0204 13.5394 18.3338 12.7043 18.3337H7.29435C6.45927 18.3338 5.65458 18.0204 5.03947 17.4556C4.42437 16.8908 4.04366 16.1157 3.97268 15.2837L3.23435 6.66699H2.49935C2.27834 6.66699 2.06637 6.57919 1.91009 6.42291C1.75381 6.26663 1.66602 6.05467 1.66602 5.83366C1.66602 5.61265 1.75381 5.40068 1.91009 5.2444C2.06637 5.08812 2.27834 5.00033 2.49935 5.00033H6.66602ZM12.4993 10.0003C12.4993 9.77931 12.4116 9.56735 12.2553 9.41107C12.099 9.25479 11.887 9.16699 11.666 9.16699C11.445 9.16699 11.233 9.25479 11.0768 9.41107C10.9205 9.56735 10.8327 9.77931 10.8327 10.0003V13.3337C10.8327 13.5547 10.9205 13.7666 11.0768 13.9229C11.233 14.0792 11.445 14.167 11.666 14.167C11.887 14.167 12.099 14.0792 12.2553 13.9229C12.4116 13.7666 12.4993 13.5547 12.4993 13.3337V10.0003ZM8.33268 9.16699C8.5537 9.16699 8.76566 9.25479 8.92194 9.41107C9.07822 9.56735 9.16602 9.77931 9.16602 10.0003V13.3337C9.16602 13.5547 9.07822 13.7666 8.92194 13.9229C8.76566 14.0792 8.5537 14.167 8.33268 14.167C8.11167 14.167 7.89971 14.0792 7.74343 13.9229C7.58715 13.7666 7.49935 13.5547 7.49935 13.3337V10.0003C7.49935 9.77931 7.58715 9.56735 7.74343 9.41107C7.89971 9.25479 8.11167 9.16699 8.33268 9.16699ZM5.63268 15.142C5.66819 15.5582 5.85866 15.9458 6.16638 16.2283C6.47411 16.5107 6.87667 16.6673 7.29435 16.667H12.7043C13.1217 16.6668 13.5239 16.5101 13.8313 16.2277C14.1386 15.9453 14.3289 15.5579 14.3643 15.142L15.091 6.66699H4.90768L5.63268 15.142Z" fill="#C4C4C4"/>
+                </svg>                                 
+              </button>
+            </div>
+          </div>
+        ))
+      ) : (
+        <div class="no-products">
+          <p>商品がまだ登録されていません</p>
+          <p class="add-first">↑ 上のフォームから最初の商品を登録してみましょう</p>
+        </div>
+      )}
+    </div>
+  </section>
+</div>
+
+<style lang="scss">
+
+  .cms-box{
+    width: 100%;
+		background-color: var(--sub-bg-color);
+		border: 1px solid var(--main-border-color);
+		border-radius: var(--border-radius-m);
+		margin-top: 16px;
+
+    >.inner{
+			padding: 16px 16px 16px 24px;
+		}
+  }
+
+  .box{
+		width: calc(100% - 32px);
+    margin-inline: 16px;
+		background-color: var(--sub-bg-color);
+		border: 1px solid var(--main-border-color);
+		border-radius: var(--border-radius-m);
+		margin-top: 8px;
+
+		&:first-of-type{
+			margin-top: 16px;
+		}
+
+		>.inner{
+			padding: 16px;
+		}
+    
+    &_btn{
+      padding: 12px 16px;
+      border-radius: var(--border-radius-m);
+      font-size: var(--font-size-xxs);
+      color: var(--main-font-color);
+      border: 1px solid var(--sub-border-color);
+
+      &_wrapper{
+        position: relative;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        position: sticky;
+        top: 0;
+
+        >.save{
+          color: var(--main-font-color);
+          background-color: var(--accent-bg-color);
+          border: 1px solid var(--accent-bg-color);
+        }
+      }
+    }
+  }
+
+  .posted{
+    width: calc(100% - 32px);
+    margin-top: 40px;
+    padding-top: 40px;
+    margin-inline: 16px;
+    border-top: 1px solid var(--main-border-color);
+
+    &_label{
+      font-size: var(--font-size-s);
+      color: var(--main-font-color);
+    }
+  }
+  
+  .option_box{
+    margin-top: 24px;
+  }
+
+  .subject_wrapper{
+    display: flex;
+    align-items: center;
+    gap: 8px;
+
+    >.active{
+      background-color: var(--item-bg-color);
+      color: var(--main-font-color);
+    }
+
+    >button{
+      padding: 8px 16px;
+      border: 1px solid var(--main-border-color);
+      border-radius: var(--border-radius-s);
+      font-size: var(--font-size-xs);
+      color: var(--sub-font-color);
+    }
+  }
+
+  .option_wrapper{
+    margin-top: 16px;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+  }
+
+  .option{
+    display: flex;
+    align-items: center;
+
+    >input{
+      margin-right: 8px;
+    }
+    >svg{
+      margin-right: 4px;
+    }
+    >label{
+      color: var(--main-font-color);
+      font-size: var(--font-size-xs);
+    }
+  }
+  
+  /* 商品カード用のスタイル */
+  .products-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    gap: 16px;
+    margin-top: 24px;
+  }
+  
+  .product-card {
+    background-color: var(--item-bg-color);
+    border: 1px solid var(--main-border-color);
+    border-radius: var(--border-radius-m);
+    overflow: hidden;
+  }
+  
+  .product-image {
+    position: relative;
+    height: 160px;
+    background-color: var(--elem-bg-color);
+  }
+  
+  .product-image img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+  
+  .no-image {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    color: var(--elem-font-color);
+  }
+  
+  .product-status {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  
+  .badge {
+    padding: 4px 8px;
+    border-radius: var(--border-radius-s);
+    font-size: var(--font-size-xxs);
+    font-weight: 500;
+  }
+  
+  .badge.public {
+    background-color: rgba(76, 175, 80, 0.2);
+    color: #2e7d32;
+  }
+  
+  .badge.draft {
+    background-color: rgba(158, 158, 158, 0.2);
+    color: #616161;
+  }
+  
+  .badge.base {
+    background-color: rgba(33, 150, 243, 0.2);
+    color: #1976d2;
+  }
+  
+  .badge.error {
+    background-color: rgba(244, 67, 54, 0.2);
+    color: #d32f2f;
+  }
+  
+  .product-info {
+    padding: 16px;
+  }
+  
+  .product-tags {
+    font-size: var(--font-size-xxs);
+    color: var(--sub-font-color);
+    margin-bottom: 8px;
+  }
+  
+  .product-title {
+    font-size: var(--font-size-s);
+    color: var(--main-font-color);
+    margin-bottom: 8px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  
+  .product-price {
+    font-size: var(--font-size-m);
+    font-weight: 500;
+    color: var(--main-font-color);
+    margin-bottom: 4px;
+  }
+  
+  .product-stock {
+    font-size: var(--font-size-xs);
+    color: var(--sub-font-color);
+  }
+  
+  .product-actions {
+    display: flex;
+    align-items: center;
+    padding: 8px 16px;
+    border-top: 1px solid var(--main-border-color);
+    gap: 8px;
+  }
+  
+  .swich {
+    width: auto;
+    height: auto;
+    padding-bottom: 4px;
+    margin-right: 8px;
+    font-size: var(--font-size-xs);
+    color: var(--sub-font-color);
+    border: none;
+    border-bottom: 1px solid var(--sub-border-color);
+    border-radius: 0;
+    background-color: transparent;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    cursor: pointer;
+  }
+  
+  .posted_item_btn {
+    width: 32px;
+    height: 32px;
+    background-color: var(--btn-bg-color);
+    border: 1px solid var(--main-border-color);
+    border-radius: var(--border-radius-s);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+  }
+  
+  .posted_item_btn.edit {
+    margin-left: auto;
+  }
+.no-products {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background-color: var(--item-bg-color);
+  border-radius: var(--border-radius-m);
+  padding: 32px;
+  margin-top: 16px;
+  gap: 16px;
+}
+
+.no-products p {
+  color: var(--sub-font-color);
+  font-size: var(--font-size-s);
+  text-align: center;
+}
+
+.no-products .add-first {
+  font-size: var(--font-size-xs);
+  color: var(--accent-bg-color);
+}
+
+.cms-body {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.cms-body_input-wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.cms-body_input-wrapper label {
+  font-size: var(--font-size-s);
+  color: var(--sub-font-color);
+}
+
+.cms-body_input-wrapper input[type="text"],
+.cms-body_input-wrapper input[type="number"],
+.cms-body_input-wrapper textarea {
+  padding: 12px 16px;
+  background-color: var(--item-bg-color);
+  border: 1px solid var(--main-border-color);
+  border-radius: var(--border-radius-m);
+  font-size: var(--font-size-s);
+  color: var(--main-font-color);
+}
+
+.image-upload-wrapper {
+  width: 100%;
+}
+
+.image-preview {
+  width: 100%;
+  height: 200px;
+  background-color: var(--item-bg-color);
+  border: 1px solid var(--main-border-color);
+  border-radius: var(--border-radius-m);
+  overflow: hidden;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.upload-placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+.upload-placeholder p {
+  font-size: var(--font-size-xs);
+  color: var(--sub-font-color);
+}
+
+#preview-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.cms-body_wrapper {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.cms-body_wrapper_btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  background-color: var(--accent-bg-color);
+  border-radius: var(--border-radius-m);
+  color: white;
+  font-size: var(--font-size-xs);
+  margin-top: 16px;
+  cursor: pointer;
+  border: none;
+}
+
+fieldset {
+  border: none;
+  padding: 0;
+}
+
+fieldset .label {
+  font-size: var(--font-size-s);
+  color: var(--sub-font-color);
+  margin-bottom: 16px;
+}
+
+.base-info {
+  margin-top: 16px;
+  padding: 16px;
+  background-color: var(--item-bg-color);
+  border-radius: var(--border-radius-m);
+  border: 1px solid var(--main-border-color);
+}
+
+.base-info-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--font-size-s);
+  color: var(--main-font-color);
+  margin-bottom: 8px;
+}
+
+.base-info-text {
+  font-size: var(--font-size-xs);
+  color: var(--sub-font-color);
+  margin-bottom: 12px;
+}
+
+.base-settings-link {
+  font-size: var(--font-size-xs);
+  color: var(--accent-bg-color);
+  text-decoration: underline;
+}
+</style>
+
+
+<script>
+  document.addEventListener('DOMContentLoaded', () => {
+    // ファイルアップロード処理
+    const imagePreview = document.getElementById('product-image-preview');
+    const fileInput = document.getElementById('product-image');
+    const previewImg = document.getElementById('preview-img');
+    const uploadPlaceholder = document.querySelector('.upload-placeholder');
+
+    // 画像プレビュー領域クリック時に隠れたinput[type=file]をクリックする
+    if (imagePreview && fileInput) {
+      imagePreview.addEventListener('click', () => {
+        fileInput.click();
+      });
+    }
+
+    // ファイル選択後のプレビュー表示
+    if (fileInput && previewImg && uploadPlaceholder) {
+      fileInput.addEventListener('change', (e) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onload = (event) => {
+          if (previewImg && event.target?.result) {
+            previewImg.src = event.target.result.toString();
+            previewImg.style.display = 'block';
+            if (uploadPlaceholder) {
+              uploadPlaceholder.style.display = 'none';
+            }
+          }
+        };
+        reader.readAsDataURL(file);
+      });
+    }
+
+    // 商品フォームのバリデーション
+    const productForm = document.getElementById('product-form');
+    if (productForm) {
+      productForm.addEventListener('submit', function(e) {
+        // 必須項目のチェック
+        const titleInput = document.getElementById('product-title') as HTMLInputElement;
+        const priceInput = document.getElementById('product-price') as HTMLInputElement;
+        const stockInput = document.getElementById('product-stock') as HTMLInputElement;
+        
+        if (!titleInput?.value?.trim()) {
+          e.preventDefault();
+          alert('商品名を入力してください');
+          titleInput?.focus();
+          return false;
+        }
+        
+        if (!priceInput?.value?.trim() || parseInt(priceInput.value) <= 0) {
+          e.preventDefault();
+          alert('有効な価格を入力してください');
+          priceInput?.focus();
+          return false;
+        }
+        
+        if (!stockInput?.value?.trim() || parseInt(stockInput.value) < 0) {
+          e.preventDefault();
+          alert('在庫数は0以上で入力してください');
+          stockInput?.focus();
+          return false;
+        }
+        
+        // フォーム送信前にログ出力
+        const submitButton = e.submitter as HTMLButtonElement;
+        const submitType = submitButton ? submitButton.value : 'draft';
+        console.log('商品フォーム送信: submitType =', submitType);
+        
+        // 正常に送信
+        return true;
+      });
+    }
+
+    // 公開/下書きステータスのフィルタリング
+    const productStatusWrapper = document.getElementById('product-status-wrapper');
+    if (productStatusWrapper) {
+      const publicBtn = productStatusWrapper.querySelector('button:first-child') as HTMLButtonElement;
+      const draftBtn = productStatusWrapper.querySelector('button:last-child') as HTMLButtonElement;
+      const productCards = document.querySelectorAll('.product-card') as NodeListOf<HTMLElement>;
+      
+      if (publicBtn && draftBtn && productCards.length > 0) {
+        // 公開中フィルター（初期状態）
+        publicBtn.addEventListener('click', function() {
+          this.classList.add('active');
+          draftBtn.classList.remove('active');
+          
+          productCards.forEach((card) => {
+            const status = card.getAttribute('data-status');
+            if (status === 'public' || status === null) {
+              card.style.display = 'block';
+            } else {
+              card.style.display = 'none';
+            }
+          });
+        });
+        
+        // 下書きフィルター
+        draftBtn.addEventListener('click', function() {
+          this.classList.add('active');
+          publicBtn.classList.remove('active');
+          
+          productCards.forEach((card) => {
+            const status = card.getAttribute('data-status');
+            if (status === 'draft') {
+              card.style.display = 'block';
+            } else {
+              card.style.display = 'none';
+            }
+          });
+        });
+      }
+    }
+
+    // カテゴリによるフィルタリング
+    const productOptionWrapper = document.getElementById('product-option-wrapper');
+    if (productOptionWrapper) {
+      const tagRadios = productOptionWrapper.querySelectorAll('input[type="radio"]') as NodeListOf<HTMLInputElement>;
+      const productCards = document.querySelectorAll('.product-card') as NodeListOf<HTMLElement>;
+      
+      tagRadios.forEach((radio) => {
+        radio.addEventListener('change', function() {
+          if (!this.checked) return;
+          
+          const selectedTag = this.value;
+          console.log('選択された商品カテゴリ:', selectedTag);
+          
+          // 商品カードをループ
+          productCards.forEach((card) => {
+            // 現在のステータス表示設定を維持するため、現在の表示状態を確認
+            const currentStatus = card.getAttribute('data-status');
+            const statusWrapper = document.getElementById('product-status-wrapper');
+            const isPublicVisible = statusWrapper?.querySelector('button:first-child')?.classList.contains('active');
+            const isDraftVisible = statusWrapper?.querySelector('button:last-child')?.classList.contains('active');
+            
+            // 現在の表示状態に基づいて、このカードが表示されるべきかどうかを判断
+            let shouldBeVisibleByStatus = false;
+            
+            if (isPublicVisible && (currentStatus === 'public' || currentStatus === null)) {
+              shouldBeVisibleByStatus = true;
+            } else if (isDraftVisible && currentStatus === 'draft') {
+              shouldBeVisibleByStatus = true;
+            }
+            
+            // "すべて"が選択された場合
+            if (selectedTag === 'すべて') {
+              // ステータスフィルタのみを適用
+              if (shouldBeVisibleByStatus) {
+                card.style.display = 'block';
+              } else {
+                card.style.display = 'none';
+              }
+            } else {
+              // 特定のタグが選択された場合
+              const tagsStr = card.getAttribute('data-tags');
+              const tags = tagsStr ? JSON.parse(tagsStr) : [];
+              const hasTag = tags.includes(selectedTag);
+              
+              // タグを持っていて、かつステータスフィルタに合致するカードのみ表示
+              if (hasTag && shouldBeVisibleByStatus) {
+                card.style.display = 'block';
+              } else {
+                card.style.display = 'none';
+              }
+            }
+          });
+        });
+      });
+    }
+
+    // 商品の公開/下書き切り替えボタン
+    document.querySelectorAll('.product-draft-btn').forEach(button => {
+      button.addEventListener('click', async function(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        
+        const self = this as HTMLButtonElement;
+        const productId = self.id.replace('product-draft-btn-', '');
+        
+        if (confirm('この商品を下書き状態に変更しますか？')) {
+          try {
+            // ローディングオーバーレイを表示
+            window.loadingHandler.show('ステータスを更新中...');
+            
+            // FormDataを作成
+            const formData = new FormData();
+            formData.append('action', 'update_product_status');
+            formData.append('productId', productId);
+            formData.append('status', 'draft');
+            
+            // 専用のfetchWithCsrf関数を使用してCSRFトークンを自動付与
+            const response = await window.fetchWithCsrf('', {
+              method: 'POST',
+              body: formData
+            });
+            
+            if (!response.ok) {
+              throw new Error('ステータス更新に失敗しました');
+            }
+            
+            // 成功時の処理
+            window.location.href = `${window.location.pathname}?submitted=true&type=product`;
+          } catch (error) {
+            console.error('エラー:', error);
+            const errorMessage = error instanceof Error ? error.message : '処理中にエラーが発生しました';
+            window.showNotification(errorMessage, 'error');
+            
+            // エラー発生時はローディングオーバーレイを非表示
+            window.loadingHandler.hide();
+          }
+        }
+      });
+    });
+
+    document.querySelectorAll('.product-publish-btn').forEach(button => {
+      button.addEventListener('click', async function(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        
+        const self = this as HTMLButtonElement;
+        const productId = self.id.replace('product-publish-btn-', '');
+        
+        if (confirm('この商品を公開しますか？')) {
+          try {
+            // ローディングオーバーレイを表示
+            window.loadingHandler.show('ステータスを更新中...');
+            
+            // FormDataを作成
+            const formData = new FormData();
+            formData.append('action', 'update_product_status');
+            formData.append('productId', productId);
+            formData.append('status', 'public');
+            
+            // 専用のfetchWithCsrf関数を使用してCSRFトークンを自動付与
+            const response = await window.fetchWithCsrf('', {
+              method: 'POST',
+              body: formData
+            });
+            
+            if (!response.ok) {
+              throw new Error('ステータス更新に失敗しました');
+            }
+            
+            // 成功時の処理
+            window.location.href = `${window.location.pathname}?submitted=true&type=product`;
+          } catch (error) {
+            console.error('エラー:', error);
+            const errorMessage = error instanceof Error ? error.message : '処理中にエラーが発生しました';
+            window.showNotification(errorMessage, 'error');
+            
+            // エラー発生時はローディングオーバーレイを非表示
+            window.loadingHandler.hide();
+          }
+        }
+      });
+    });
+
+    // 削除ボタンのイベントリスナー
+    document.querySelectorAll('.posted_item_btn.delete').forEach((btn) => {
+      btn.addEventListener('click', async function(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        
+        const self = this as HTMLElement;
+        const productId = self.getAttribute('data-product-id');
+        
+        if (confirm('この商品を削除してもよろしいですか？この操作は元に戻せません。')) {
+          try {
+            // FormDataを作成
+            const formData = new FormData();
+            formData.append('action', 'delete_product');
+            formData.append('productId', productId || '');
+            
+            // 専用のfetchWithCsrf関数を使用してCSRFトークンを自動付与
+            const response = await window.fetchWithCsrf('', {
+              method: 'POST',
+              body: formData
+            });
+            
+            if (!response.ok) {
+              throw new Error('サーバーエラーが発生しました');
+            }
+            
+            // 成功したらページをリロード
+            window.location.reload();
+            
+          } catch (error: any) {
+            console.error('エラー:', error);
+            alert('処理中にエラーが発生しました: ' + error.message);
+          }
+        }
+      });
+    });
+
+    // 編集ボタンのイベントリスナー
+    document.querySelectorAll('.posted_item_btn.edit').forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        
+        const productId = (btn as HTMLElement).getAttribute('data-product-id');
+        // 編集ページへ遷移（例: /projects/[projectId]/cms/products/[productId]/edit）
+        const url = new URL(window.location.href);
+        const pathSegments = url.pathname.split('/');
+        const projectId = pathSegments[2]; // /projects/[projectId]/cms の [projectId] 部分
+        
+        window.location.href = `/projects/${projectId}/cms/products/${productId}/edit`;
+      });
+    });
+
+    // 新しいカテゴリタグを追加する処理
+    const addProductTagBtn = document.getElementById('addProductTagBtn');
+    if (addProductTagBtn) {
+      addProductTagBtn.addEventListener('click', () => {
+        const tagName = prompt('新しいカテゴリ名を入力してください');
+        if (!tagName || tagName.trim() === '') return;
+        
+        // 既存のタグと重複していないか確認
+        const existingTags = Array.from(document.querySelectorAll('.cms-body_wrapper')).map(
+          wrapper => wrapper.getAttribute('data-key')
+        );
+        
+        if (existingTags.includes(tagName)) {
+          alert('そのカテゴリは既に存在します');
+          return;
+        }
+        
+        // 新しいタグ要素を作成
+        const tagFieldset = document.getElementById('product-tag-fieldset');
+        const newTagWrapper = document.createElement('div');
+        newTagWrapper.className = 'cms-body_wrapper';
+        newTagWrapper.setAttribute('data-key', tagName);
+        
+        const tagId = `product-tag-${tagName.replace(/\s+/g, '-')}`;
+        
+        newTagWrapper.innerHTML = `
+          <input type="checkbox" id="${tagId}" name="productTags" value="${tagName}" checked>
+          <label for="${tagId}">${tagName}</label>
+        `;
+        
+        // ボタンの前に挿入
+        tagFieldset?.insertBefore(newTagWrapper, addProductTagBtn);
+      });
+    }
+
+    // 動的なフォーム送信時にCSRFトークンを含める
+    function getCsrfToken() {
+      const tokenInput = document.querySelector('input[name="csrf_token"]');
+      return tokenInput ? tokenInput.value : '';
+    }
+    
+    // フォーム送信前にCSRFトークンを追加
+    document.querySelectorAll('form').forEach(form => {
+      form.addEventListener('submit', function(e) {
+        const csrfInput = this.querySelector('input[name="csrf_token"]');
+        if (!csrfInput) {
+          const input = document.createElement('input');
+          input.type = 'hidden';
+          input.name = 'csrf_token';
+          input.value = getCsrfToken();
+          this.appendChild(input);
+        }
+      });
+    });
+  });
+</script> 

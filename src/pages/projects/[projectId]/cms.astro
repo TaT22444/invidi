@@ -6,6 +6,7 @@ import Layout from "../../../layouts/Layout.astro";
 import MyLineChart from "../../../components/MyLineChart.jsx";
 import Blog from "../../../components/Blog.astro";
 import Notice from "../../../components/Notice.astro";
+import Products from "../../../components/Products.astro";
 import ProjectNav from "../../../components/ProjectNav.astro";
 
 // ◆ Firebase Admin SDK のインポート
@@ -22,6 +23,23 @@ import {
   initializeEditableElement,
   initializeDeleteButton
 } from '../../../utils/blogUtils.js';
+
+// 必要なインポートを追加
+import { getProjectProducts, getProductCategories, createProduct, updateProductStatus, deleteProduct } from "../../../services/productService";
+import { generateCSRFToken, getCSRFCookieHeader, validateCSRFToken } from "../../../utils/csrf";
+import { getCookies } from "../../../lib/cookie-utils";
+
+// 変数宣言
+let errorMessage = ""; // エラーメッセージの初期化
+let products: any[] = [];
+let productCategoryTags: string[] = [];
+let csrfToken = ""; 
+let redirectResponse = null;
+let csrfRetry = false;
+
+// 既存のインポート
+import LoadingOverlay from "../../../components/common/LoadingOverlay.astro";
+import Notification from "../../../components/common/Notification.astro";
 
 function formatCreatedAt(createdAt: string | number | Date) {
   if (!createdAt) return "日付未設定";
@@ -110,7 +128,8 @@ if (!admin.apps.length) {
   console.log("Service Account:", serviceAccountStr);
   if (serviceAccountStr) {
     const serviceAccount = JSON.parse(serviceAccountStr);
-    const bucketName = import.meta.env.FIREBASE_STORAGE_BUCKET || "test-87192.firebasestorage.app";
+    // const bucketName = import.meta.env.FIREBASE_STORAGE_BUCKET || "test-87192.firebasestorage.app";
+    const bucketName = import.meta.env.FIREBASE_STORAGE_BUCKET;
     admin.initializeApp({
       credential: admin.credential.cert(serviceAccount),
       storageBucket: bucketName,
@@ -134,6 +153,14 @@ const cookies = Object.fromEntries(
   })
 );
 const token = cookies["token"] || "";
+
+// CSRFトークンを生成
+csrfToken = generateCSRFToken();
+// トークンをクッキーにセット
+const csrfCookieHeader = getCSRFCookieHeader(csrfToken);
+Astro.response.headers.append("Set-Cookie", csrfCookieHeader["Set-Cookie"]);
+
+const cookieToken = cookies.csrf_token;
 
 let authUser = null;
 if (token) {
@@ -160,6 +187,17 @@ if (authUser) {
 //       ユーザーが所有する projects[] の中から該当のプロジェクトを検索
 // ----------------------
 const { projectId } = Astro.params;
+
+// 型安全な方法で projectId を確保
+if (!projectId) {
+  return new Response('プロジェクトIDが見つかりません', { status: 404 });
+}
+
+// projectId が確実に string 型になったので、エラーなくFirestoreから取得できる
+const projectSnap = await db.collection("projects").doc(projectId as string).get();
+const projectData = projectSnap.data() || {};
+const existingBlogTags = projectData.blogTags || [];
+const existingNewsTags = projectData.newsTags || [];
 
 // ユーザーが認証されているか確認
 if (!authUser || !userData) {
@@ -210,10 +248,6 @@ try {
   // 追加データの取得に失敗しても、基本的なプロジェクトデータがあるので処理を続行
 }
 
-const projectSnap = await db.collection("projects").doc(projectId).get();
-const projectData = projectSnap.data() || {};
-const existingBlogTags = projectData.blogTags || [];
-const existingNewsTags = projectData.newsTags || [];
 // ----------------------
 // ▼ (5) Layout.astro に渡すための accountName を作成
 // ----------------------
@@ -263,6 +297,7 @@ const userId = authUser?.uid || "";
 // ▼ (9) blog・notice一覧を取得
 let blogList: any[] = [];
 let noticeList: any[] = [];
+let productsList: any[] = [];
 
 try {
   // blog一覧
@@ -311,7 +346,22 @@ if (method === "POST") {
   const formData = await Astro.request.formData();
   const action = formData.get("action")?.toString() || "";
 
+  // CSRFトークンをリクエストから取得
+  const requestToken = formData.get("csrf_token")?.toString();
+
   try {
+    // CSRFトークンを検証
+    if (!validateCSRFToken(requestToken, cookieToken)) {
+      errorMessage = "セキュリティトークンの検証に失敗しました。ページを再読み込みして再試行してください。";
+      // return文を使用せず、リダイレクト用の変数を設定
+      redirectResponse = {
+        status: 303, // 303を使用して、リダイレクト
+        headers: {
+          "Location": `/projects/${projectId}/cms?error=invalid_csrf_token`
+        }
+      };
+    } else {
+      
     // 画像アップロード処理
     if (action === "upload_blog_image") {
       const image = formData.get("image");
@@ -475,11 +525,22 @@ if (method === "POST") {
       }
       
       return Astro.redirect(`/projects/${projectId}/cms#notice-panel`);
-    }
+    }}
   } catch (err) {
     console.error("投稿時エラー:", err);
     postError = "投稿に失敗しました。";
   }
+}
+
+// 既存のデータ取得処理
+try {
+  // 商品データとカテゴリを取得
+  if (projectId) {
+    products = await getProjectProducts(projectId) || [];
+    productCategoryTags = await getProductCategories(projectId) || [];
+  }
+} catch (error) {
+  console.error("EC商品データの取得に失敗しました:", error);
 }
 ---
 
@@ -550,6 +611,7 @@ if (method === "POST") {
           <ul class="box_cms-list">
             <li class="box_cms-item active" data-target="notice-panel">お知らせ</li>
             <li class="box_cms-item" data-target="blog-panel">ブログ</li>
+            <li class="box_cms-item" data-target="product-panel">EC商品</li>
             <li>
               <button class="box_cms_number">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -572,12 +634,32 @@ if (method === "POST") {
 
     <div class="cms_contents">
       
-      <Blog existingBlogTags={existingBlogTags} blogList={blogList} />
+      <Blog
+        projectId={projectId || ""} 
+        existingBlogTags={existingBlogTags} 
+        blogList={blogList}
+        csrfToken={csrfToken}
+      />
       <!-- お知らせタブ -->
-      <Notice existingNewsTags={existingNewsTags} noticeList={noticeList} />
+      <Notice 
+        projectId={projectId || ""} 
+        existingTags={existingNewsTags} 
+        noticeList={noticeList}
+        csrfToken={csrfToken} 
+      />
+      <!-- EC商品タブ -->
+      <Products
+        projectId={projectId || ""}
+        existingTags={productCategoryTags || []}
+        productsList={products || []}
+        csrfToken={csrfToken}
+      />
     </div>
 
   </div>
+
+  <LoadingOverlay id="loading-overlay" defaultText="処理中..." />
+  <Notification id="notification-container" />
 </Layout>
 
 <style lang="scss">
@@ -1179,7 +1261,7 @@ if (method === "POST") {
   }
 </style>
 
-
+<script src="../../../scripts/loading-handler.js"></script>
 <script>
   
 // ① すべての blog-elems_elem ボタンを取得
@@ -1558,113 +1640,6 @@ if (addTagBtn && tagFieldset) {
   });
 
 
-
-//   const addBlogTagBtn = document.getElementById("addBlogTagBtn");
-//   const blogTagFieldset = document.getElementById("blog-tag-fieldset");
-//   if (addBlogTagBtn && blogTagFieldset) {
-//     addBlogTagBtn.addEventListener("click", () => {
-//       const uniqueId = "blog-tag-" + Math.random().toString(36).slice(2);
-//       const newTagWrapper = document.createElement("div");
-//       newTagWrapper.className = "cms-body_wrapper";
-
-//       newTagWrapper.innerHTML = `
-//       <input type="checkbox" id="${uniqueId}" name="blogTags" value="新しいタグ">
-//       <label for="${uniqueId}">新しいタグ</label>
-//       <span class="item_action_btns">
-//         <button type="button" class="edit-tag-btn" data-id="${uniqueId}">
-//           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-//              <path fill-rule="evenodd" clip-rule="evenodd" d="M21.4559 5.41632C21.5509 5.56052 21.5932 5.7331 21.5757 5.9049C21.5582 6.07671 21.482 6.23721 21.3599 6.35932L12.1669 15.5513C12.0728 15.6453 11.9555 15.7126 11.8269 15.7463L7.99787 16.7463C7.8713 16.7793 7.7383 16.7787 7.61206 16.7444C7.48583 16.7101 7.37076 16.6434 7.27826 16.5509C7.18577 16.4584 7.11908 16.3434 7.0848 16.2171C7.05053 16.0909 7.04986 15.9579 7.08287 15.8313L8.08287 12.0033C8.11277 11.8887 8.16776 11.7821 8.24387 11.6913L17.4709 2.47032C17.6115 2.32987 17.8021 2.25098 18.0009 2.25098C18.1996 2.25098 18.3902 2.32987 18.5309 2.47032L21.3599 5.29832C21.3948 5.33516 21.4269 5.3746 21.4559 5.41632ZM19.7689 5.82832L18.0009 4.06132L9.48287 12.5793L8.85787 14.9723L11.2509 14.3473L19.7689 5.82832Z" fill="#C4C4C4"/>
-//              <path d="M19.641 17.1601C19.9143 14.824 20.0016 12.47 19.902 10.1201C19.8997 10.0647 19.9089 10.0094 19.929 9.95778C19.9491 9.90614 19.9798 9.85925 20.019 9.82008L21.003 8.83608C21.0299 8.80904 21.064 8.79033 21.1013 8.78222C21.1385 8.77411 21.1774 8.77693 21.2131 8.79034C21.2488 8.80375 21.2798 8.82719 21.3025 8.85783C21.3252 8.88847 21.3386 8.92502 21.341 8.96308C21.5257 11.7543 21.4554 14.5566 21.131 17.3351C20.895 19.3571 19.271 20.9421 17.258 21.1671C13.7633 21.5538 10.2367 21.5538 6.74201 21.1671C4.73001 20.9421 3.10501 19.3571 2.86901 17.3351C2.45512 13.7905 2.45512 10.2097 2.86901 6.66508C3.10501 4.64308 4.72901 3.05808 6.74201 2.83308C9.39446 2.54012 12.0667 2.46888 14.731 2.62008C14.7691 2.62281 14.8057 2.63642 14.8363 2.65929C14.867 2.68215 14.8904 2.71332 14.9039 2.7491C14.9173 2.78487 14.9203 2.82376 14.9123 2.86115C14.9044 2.89854 14.8859 2.93287 14.859 2.96008L13.866 3.95208C13.8272 3.99092 13.7808 4.02136 13.7297 4.04149C13.6786 4.06162 13.6239 4.07101 13.569 4.06908C11.3458 3.99293 9.11993 4.07815 6.90901 4.32408C6.26295 4.39558 5.65986 4.6828 5.19717 5.13933C4.73447 5.59586 4.43919 6.19504 4.35901 6.84008C3.95787 10.2684 3.95787 13.7318 4.35901 17.1601C4.43919 17.8051 4.73447 18.4043 5.19717 18.8608C5.65986 19.3174 6.26295 19.6046 6.90901 19.6761C10.264 20.0511 13.736 20.0511 17.092 19.6761C17.7381 19.6046 18.3412 19.3174 18.8039 18.8608C19.2666 18.4043 19.5608 17.8051 19.641 17.1601Z" fill="#C4C4C4"/>
-//           </svg>
-//         </button>
-//         <button type="button" class="delete-tag-btn" data-id="${uniqueId}">
-//           <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
-//            <path d="M7.05273 12.9454L12.9461 7.05371M7.05273 7.05371L12.9461 12.9454" stroke="#C4C4C4" stroke-linecap="round"/>
-//           </svg>
-//         </button>
-//       </span>
-//       `;
-//       blogTagFieldset.insertBefore(newTagWrapper, addBlogTagBtn);
-//           // もしラベルをすぐ編集したいならフォーカスを当てる
-//       const labelEl = newTagWrapper.querySelector("label[contenteditable]");
-//       if (labelEl) {
-//         // キャレットを末尾に持っていきたい場合
-//         labelEl.focus();
-//         document.execCommand("selectAll", false, null); // すべて選択
-//       }
-//     });
-//   }
-
-//   if (blogTagFieldset) {
-//     blogTagFieldset.addEventListener("click", (ev) => {
-//     // (A) 削除ボタンが押されたとき
-//     const delBtn = ev.target.closest(".delete-tag-btn");
-//     if (delBtn) {
-//       // 親のラッパ要素 (div.cms-body_wrapper) を削除する
-//       // 先に確認ダイアログを出す場合は下記のように
-//       if (!confirm("このタグを削除してよろしいですか？")) return;
-//       const wrapper = delBtn.closest(".cms-body_wrapper");
-//       if (wrapper) wrapper.remove();
-//       return;
-//     }
-
-//     // (B) 編集ボタンが押されたとき
-//     const editBtn = ev.target.closest(".edit-tag-btn");
-//     if (editBtn) {
-//       // 同じ行の label を contenteditable にしてフォーカス
-//       const wrapper = editBtn.closest(".cms-body_wrapper");
-//       if (!wrapper) return;
-//       const labelEl = wrapper.querySelector("label");
-//       if (!labelEl) return;
-
-//       // 編集を許可
-//       labelEl.setAttribute("contenteditable", "true");
-//       labelEl.focus();
-
-//       // 全選択（モダンブラウザの場合）
-//       if (window.getSelection && document.createRange) {
-//         const range = document.createRange();
-//         range.selectNodeContents(labelEl);
-//         const sel = window.getSelection();
-//         if (sel) {
-//           sel.removeAllRanges();
-//           sel.addRange(range);
-//         }
-//       } else {
-//         // 古いブラウザ向け
-//         document.execCommand("selectAll", false, null);
-//       }
-
-//       // blur で編集完了 → contenteditable を外す
-//       labelEl.addEventListener(
-//         "blur",
-//         () => {
-//           labelEl.removeAttribute("contenteditable");
-
-//           const checkbox = wrapper.querySelector('input[type="checkbox"]');
-//           if (checkbox) {
-//             checkbox.value = labelEl.textContent.trim() || "無題タグ";
-//           }
-
-//           // もし空文字になっていたら削除 or 何らかのエラー表示など
-//           if (labelEl.textContent.trim() === "") {
-//             if (!confirm("タグ名が空です。削除してよいですか？")) {
-//               // 元に戻したい場合は適宜処理
-//               labelEl.textContent = "新しいタグ";
-//             } else {
-//               wrapper.remove();
-//             }
-//           }
-//         },
-//         { once: true }
-//       );
-
-//       return;
-//     }
-//   });
-// }
-
-
   // すべてのタブ要素を取得
   const tabItems = document.querySelectorAll('.box_cms-item');
   // すべてのコンテンツ要素を取得
@@ -1957,579 +1932,8 @@ const input = document.getElementById('blogThumbnail') as HTMLInputElement;
         console.log('送信するブログ本文:', blogContent);
       });
     }
-    
-    // // ブログ要素追加ボタンのイベントリスナー
-    // const blogElemButtons = document.querySelectorAll('.blog-elems_elem');
-    // blogElemButtons.forEach(button => {
-    //   button.addEventListener('click', function(e) {
-    //     e.preventDefault();
-    //     const type = this.getAttribute('data-type');
-    //     addBlogElement(type);
-    //   });
-    // });
-    
-    // // ブログ要素を追加する関数
-    // function addBlogElement(type: any) {
-    //   const blogContainer = document.querySelector('.blog');
-    //   if (!blogContainer) return;
-      
-    //   let element;
-      
-    //   switch(type) {
-    //     case 'heading1':
-    //       element = document.createElement('div');
-    //       element.className = 'blog-heading1';
-    //       element.setAttribute('data-type', 'heading1');
-    //       element.innerHTML = '<div contenteditable="true" placeholder="大見出しを入力"></div>';
-    //       break;
-    //     case 'heading2':
-    //       element = document.createElement('div');
-    //       element.className = 'blog-heading2';
-    //       element.setAttribute('data-type', 'heading2');
-    //       element.innerHTML = '<div contenteditable="true" placeholder="中見出しを入力"></div>';
-    //       break;
-    //     case 'heading3':
-    //       element = document.createElement('div');
-    //       element.className = 'blog-heading3';
-    //       element.setAttribute('data-type', 'heading3');
-    //       element.innerHTML = '<div contenteditable="true" placeholder="小見出しを入力"></div>';
-    //       break;
-    //     case 'text':
-    //       element = document.createElement('div');
-    //       element.className = 'blog-text';
-    //       element.setAttribute('data-type', 'text');
-    //       element.innerHTML = '<div contenteditable="true" placeholder="テキストを入力"></div>';
-    //       break;
-    //     case 'image':
-    //       // 画像アップロード用の要素
-    //       element = document.createElement('div');
-    //       element.className = 'blog-image';
-    //       element.setAttribute('data-type', 'image');
-    //       element.style.width = '100%';
-          
-    //       // 16:9の比率を維持するためのラッパー
-    //       const aspectRatioWrapper = document.createElement('div');
-    //       aspectRatioWrapper.style.position = 'relative';
-    //       aspectRatioWrapper.style.width = '100%';
-    //       aspectRatioWrapper.style.paddingTop = '56.25%'; // 16:9の比率（9÷16×100）
-          
-    //       // グレーの枠のスタイルを設定
-    //       const imageBox = document.createElement('div');
-    //       imageBox.className = 'image-placeholder';
-    //       imageBox.style.position = 'absolute';
-    //       imageBox.style.top = '0';
-    //       imageBox.style.left = '0';
-    //       imageBox.style.width = '100%';
-    //       imageBox.style.height = '100%';
-    //       imageBox.style.backgroundColor = '#666';
-    //       imageBox.style.display = 'flex';
-    //       imageBox.style.alignItems = 'center';
-    //       imageBox.style.justifyContent = 'center';
-    //       imageBox.style.color = 'white';
-    //       imageBox.style.borderRadius = '4px';
-    //       imageBox.style.cursor = 'pointer';
-    //       imageBox.style.overflow = 'hidden'; // はみ出した部分を隠す
-    //       imageBox.textContent = '画像を選択';
-          
-    //       // 隠しフィールドを追加（画像URLを保存するため）
-    //       const hiddenInput = document.createElement('input');
-    //       hiddenInput.type = 'hidden';
-    //       hiddenInput.name = 'blogImageUrl';
-    //       hiddenInput.value = '';
-          
-    //       // 要素に追加
-    //       aspectRatioWrapper.appendChild(imageBox);
-    //       element.appendChild(aspectRatioWrapper);
-    //       element.appendChild(hiddenInput);
-          
-    //       // 画像ボックスのクリックイベントを設定
-    //       imageBox.addEventListener('click', function() {
-    //         // ファイル選択ダイアログを表示
-    //         const fileInput = document.createElement('input');
-    //         fileInput.type = 'file';
-    //         fileInput.accept = 'image/*';
-    //         fileInput.style.display = 'none';
-    //         document.body.appendChild(fileInput);
-            
-    //         fileInput.addEventListener('change', function() {
-    //           if (fileInput.files && fileInput.files[0]) {
-    //             const file = fileInput.files[0];
-                
-    //             // 画像をアップロードするためのFormDataを作成
-    //             const formData = new FormData();
-    //             formData.append('action', 'upload_blog_image');
-    //             formData.append('image', file);
-    //             formData.append('projectId', window.location.pathname.split('/')[2]); // URLからprojectIdを取得
-                
-    //             // アップロード中の表示
-    //             imageBox.textContent = 'アップロード中...';
-                
-    //             // サーバーに画像をアップロード
-    //             fetch(window.location.pathname, {
-    //               method: 'POST',
-    //               body: formData
-    //             })
-    //             .then(response => {
-    //               if (!response.ok) {
-    //                 throw new Error('画像のアップロードに失敗しました');
-    //               }
-    //               return response.json();
-    //             })
-    //             .then(result => {
-    //               // アップロードされた画像のURLを取得
-    //               const imageUrl = result.imageUrl;
-                  
-    //               // 隠しフィールドに画像URLを設定
-    //               hiddenInput.value = imageUrl;
-                  
-    //               // グレーの枠のテキストを削除
-    //               imageBox.textContent = '';
-                  
-    //               // 画像要素を作成
-    //               const img = document.createElement('img');
-    //               img.src = imageUrl;
-    //               img.alt = 'ブログ画像';
-    //               img.style.position = 'absolute';
-    //               img.style.top = '0';
-    //               img.style.left = '0';
-    //               img.style.width = '100%';
-    //               img.style.height = '100%';
-    //               img.style.aspectRatio = '16 / 9';
-    //               img.style.objectFit = 'cover'; // 画像をカバーするように設定
-    //               img.style.borderRadius = '4px';
-                  
-    //               // 画像をグレーの枠に追加
-    //               imageBox.appendChild(img);
-    //             })
-    //             .catch(error => {
-    //               console.error('画像アップロードエラー:', error);
-    //               alert('画像のアップロードに失敗しました: ' + error.message);
-    //               imageBox.textContent = '画像';
-    //             })
-    //             .finally(() => {
-    //               // 使用後にファイル入力要素を削除
-    //               document.body.removeChild(fileInput);
-    //             });
-    //           }
-    //         });
-            
-    //         fileInput.click();
-    //       });
-    //       break;
-    //     case 'link':
-    //       element = document.createElement('div');
-    //       element.className = 'blog-link';
-    //       element.setAttribute('data-type', 'link');
-    //       element.innerHTML = `
-    //         <input type="text" placeholder="URLを入力">
-    //         <input type="text" placeholder="リンクテキストを入力">
-    //         <button class="add-link-btn">追加</button>
-    //       `;
-    //       break;
-    //   }
-      
-    //   if (element) {
-    //     blogContainer.appendChild(element);
-    //   }
-    // }
-    
-    // // ブログコンテンツを抽出する関数
-    // function extractBlogContent() {
-    //   // ブログエディタの内容を取得
-    //   const blogWrapper = document.querySelector('.blog');
-    //   if (!blogWrapper) return '';
-      
-    //   // 新しいコンテナを作成
-    //   const contentContainer = document.createElement('div');
-      
-    //   // 各コンテンツ要素を処理
-    //   blogWrapper.querySelectorAll('[data-type]').forEach(element => {
-    //     const type = element.getAttribute('data-type');
-        
-    //     if (type === 'heading1' || type === 'heading2' || type === 'heading3') {
-    //       // 見出し要素
-    //       const headingText = element.querySelector('div[contenteditable="true"]')?.textContent || '';
-    //       const headingElem = document.createElement(type === 'heading1' ? 'h2' : type === 'heading2' ? 'h3' : 'h4');
-    //       headingElem.textContent = headingText;
-    //       contentContainer.appendChild(headingElem);
-    //     } else if (type === 'text') {
-    //       // テキスト要素
-    //       const text = element.querySelector('div[contenteditable="true"]')?.textContent || '';
-    //       const pElem = document.createElement('p');
-    //       pElem.textContent = text;
-    //       contentContainer.appendChild(pElem);
-    //     } else if (type === 'image') {
-    //       // 画像要素
-    //       const imgSrc = element.querySelector('input[name="blogImageUrl"]')?.value || '';
-    //       if (imgSrc) {
-    //         // 16:9の比率を維持するためのラッパー
-    //         const imgWrapper = document.createElement('div');
-    //         imgWrapper.style.position = 'relative';
-    //         imgWrapper.style.width = '100%';
-    //         imgWrapper.style.paddingTop = '56.25%'; // 16:9の比率
-            
-    //         const imgElem = document.createElement('img');
-    //         imgElem.src = imgSrc;
-    //         imgElem.alt = 'ブログ画像';
-    //         imgElem.style.position = 'absolute';
-    //         imgElem.style.top = '0';
-    //         imgElem.style.left = '0';
-    //         imgElem.style.width = '100%';
-    //         imgElem.style.height = '100%';
-    //         imgElem.style.objectFit = 'cover';
-            
-    //         imgWrapper.appendChild(imgElem);
-    //         contentContainer.appendChild(imgWrapper);
-    //       }
-    //     } else if (type === 'link') {
-    //       // リンク要素
-    //       const linkText = element.querySelector('a')?.textContent || '';
-    //       const linkHref = element.querySelector('a')?.href || '';
-    //       if (linkHref) {
-    //         const aElem = document.createElement('a');
-    //         aElem.href = linkHref;
-    //         aElem.textContent = linkText;
-    //         contentContainer.appendChild(aElem);
-    //       }
-    //     }
-    //   });
-      
-    //   // コンテナのHTMLを返す
-    //   return contentContainer.innerHTML;
-    // }
-    
-    // // 投稿ボタンと下書き保存ボタンのイベントハンドラを修正
-    // if (publishButton && blogTextContent) {
-    //   publishButton.addEventListener('click', function(e: { preventDefault: () => void; target: { closest: (arg0: string) => any; }; }) {
-    //     // デフォルトのフォーム送信を防止
-    //     e.preventDefault();
-        
-    //     // ブログコンテンツを抽出して設定
-    //     const blogContent = extractBlogContent();
-    //     blogTextContent.value = blogContent;
-        
-    //     // タグを収集して保存した後、フォーム送信
-    //     saveSelectedTags(e.target.closest('form'));
-        
-    //     console.log('投稿ボタンがクリックされました。ブログ内容:', blogContent);
-    //   });
-    // }
-    
-    // if (draftButton && blogTextContent) {
-    //   draftButton.addEventListener('click', function(e: { preventDefault: () => void; target: { closest: (arg0: string) => any; }; }) {
-    //     // デフォルトのフォーム送信を防止
-    //     e.preventDefault();
-        
-    //     const blogContent = extractBlogContent();
-    //     blogTextContent.value = blogContent;
-        
-    //     // タグを収集して保存した後、フォーム送信
-    //     saveSelectedTags(e.target.closest('form'));
-        
-    //     console.log('下書き保存ボタンがクリックされました。ブログ内容:', blogContent);
-    //   });
-    // }
-    
-    // // タグを収集して保存する関数
-    // function saveSelectedTags(form: any) {
-    //   // 選択されたタグを取得
-    //   const selectedTags = [];
-    //   const tagElements = document.querySelectorAll('.blog-tag.selected');
-    //   tagElements.forEach(tag => {
-    //     selectedTags.push(tag.textContent.trim());
-    //   });
-      
-    //   // 新しく追加されたタグを取得
-    //   const customTagInput = document.querySelector('input[name="customTag"]');
-    //   if (customTagInput && customTagInput.value.trim()) {
-    //     const newTag = customTagInput.value.trim();
-    //     selectedTags.push(newTag);
-    //   }
-      
-    //   // 選択されたタグをブログ記事用のHidden Inputに保存
-    //   const tagInput = document.querySelector('input[name="blogTags"]');
-    //   if (tagInput) {
-    //     tagInput.value = JSON.stringify(selectedTags);
-    //   }
-      
-    //   console.log('ブログ記事に保存するタグ:', selectedTags);
-      
-    //   // まずタグ更新APIを呼び出し、成功したらフォームを送信
-    //   updateProjectTags(selectedTags, form);
-    // }
-    
-    // // プロジェクトタグリストを更新する関数
-    // function updateProjectTags(tagsToAdd: any[], form: { submit: () => void; } | undefined) {
-    //   // 現在のプロジェクトタグリストを取得
-    //   const projectTagsInput = document.querySelector('input[name="projectTags"]');
-    //   let projectTags = [];
-      
-    //   if (projectTagsInput && projectTagsInput.value) {
-    //     try {
-    //       projectTags = JSON.parse(projectTagsInput.value);
-    //     } catch (e) {
-    //       console.error('プロジェクトタグの解析エラー:', e);
-    //       projectTags = []; // エラーの場合は空配列にリセット
-    //     }
-    //   }
-      
-    //   // 新しいタグをプロジェクトタグリストに追加
-    //   let hasChanges = false;
-    //   tagsToAdd.forEach((tag: any) => {
-    //     if (tag && !projectTags.includes(tag)) {
-    //       projectTags.push(tag);
-    //       hasChanges = true;
-    //     }
-    //   });
-      
-    //   // プロジェクトIDを取得
-    //   const projectId = window.location.pathname.split('/')[2]; // URLからprojectIdを取得
-      
-    //   // プロジェクトタグリストを更新
-    //   if (projectTagsInput) {
-    //     projectTagsInput.value = JSON.stringify(projectTags);
-    //   }
-      
-    //   // タグに変更がある場合、APIを呼び出してから送信
-    //   if (hasChanges) {
-    //     console.log('APIに送信するデータ:', {
-    //       projectId: projectId,
-    //       allTags: projectTags
-    //     });
-        
-    //     // APIエンドポイントにリクエストを送信
-    //     fetch('/api/updateProject', {
-    //       method: 'POST',
-    //       headers: {
-    //         'Content-Type': 'application/json',
-    //       },
-    //       body: JSON.stringify({
-    //         projectId: projectId,
-    //         allTags: projectTags
-    //       })
-    //     })
-    //     .then(response => {
-    //       if (!response.ok) {
-    //         throw new Error('プロジェクトタグの更新に失敗しました');
-    //       }
-    //       return response.json();
-    //     })
-    //     .then(result => {
-    //       console.log('プロジェクトタグを更新しました:', result);
-    //       // タグ更新成功後にフォームを送信
-    //       if (form) form.submit();
-    //     })
-    //     .catch(error => {
-    //       console.error('プロジェクトタグ更新エラー:', error);
-    //       // エラーが発生してもフォームは送信する
-    //       if (form) form.submit();
-    //     });
-    //   } else {
-    //     console.log('プロジェクトタグに変更はありません');
-    //     // タグに変更がなければ、そのままフォームを送信
-    //     if (form) form.submit();
-    //   }
-    // }
-
-    // // 新しいタグをプロジェクトに保存する関数
-    // function saveNewTagToProject(newTag: any) {
-    //   updateProjectTags([newTag]); // 単一のタグを配列として渡す
-    // }
   });
 
-
-  // // ブログフォームの送信処理を追加
-  // document.addEventListener('DOMContentLoaded', function() {
-  //   // フォームを取得
-  //   const blogForm = document.querySelector('form.cms');
-    
-  //   if (blogForm) {
-  //     // フォーム送信前の処理
-  //     blogForm.addEventListener('submit', function(e) {
-  //       e.preventDefault(); // フォームのデフォルト送信を防止
-        
-  //       // ブログ内容を抽出してテキストエリアに設定
-  //       const blogContent = extractBlogContent();
-  //       const blogTextContent = document.getElementById('blogTextContent');
-        
-  //       if (blogTextContent && blogContent) {
-  //         blogTextContent.value = blogContent;
-  //         console.log('ブログ内容をテキストエリアに設定:', blogContent);
-  //       }
-
-        
-        
-  //       // ------ ここからお知らせのタグ追加ロジックを適用 ------
-        
-  //       // 選択されたタグを取得
-  //       const selectedTags = [];
-  //       const tagElements = document.querySelectorAll('.blog-tag.selected');
-  //       tagElements.forEach(tag => {
-  //         selectedTags.push(tag.textContent.trim());
-  //       });
-        
-  //       // カスタムタグの処理
-  //       const customTagInput = document.querySelector('input[name="customTag"]');
-  //       if (customTagInput && customTagInput.value.trim()) {
-  //         selectedTags.push(customTagInput.value.trim());
-  //       }
-        
-  //       // ブログタグをHidden Inputに設定
-  //       const blogTagsInput = document.querySelector('input[name="blogTags"]');
-  //       if (blogTagsInput) {
-  //         blogTagsInput.value = JSON.stringify(selectedTags);
-  //       }
-        
-  //       // プロジェクトタグリストを取得して更新
-  //       const projectTagsInput = document.querySelector('input[name="projectTags"]');
-  //       let projectTags = [];
-        
-  //       if (projectTagsInput && projectTagsInput.value) {
-  //         try {
-  //           projectTags = JSON.parse(projectTagsInput.value);
-  //         } catch (e) {
-  //           console.error('プロジェクトタグの解析エラー:', e);
-  //           projectTags = [];
-  //         }
-  //       }
-        
-  //       // 新しいタグをプロジェクトタグリストに追加
-  //       let hasChanges = false;
-  //       selectedTags.forEach(tag => {
-  //         if (tag && !projectTags.includes(tag)) {
-  //           projectTags.push(tag);
-  //           hasChanges = true;
-  //         }
-  //       });
-        
-  //       // プロジェクトIDを取得
-  //       const projectId = window.location.pathname.split('/')[2];
-        
-  //       // お知らせ投稿と同じAPIエンドポイントとパラメータ構造を使用
-  //       if (hasChanges) {
-  //         console.log('お知らせと同じタグ更新APIを呼び出します', {
-  //           projectId: projectId,
-  //           tags: projectTags
-  //         });
-          
-  //         fetch('/api/updateProjectTags', {
-  //           method: 'POST',
-  //           headers: {
-  //             'Content-Type': 'application/json',
-  //           },
-  //           body: JSON.stringify({
-  //             projectId: projectId,
-  //             tags: projectTags
-  //           })
-  //         })
-  //         .then(response => response.json())
-  //         .then(data => {
-  //           console.log('タグ更新レスポンス:', data);
-  //           // フォームを送信（元のブログ投稿ロジックを維持）
-  //           this.submit();
-  //         })
-  //         .catch(error => {
-  //           console.error('タグ更新失敗:', error);
-  //           // エラーでもフォームは送信
-  //           this.submit();
-  //         });
-  //       } else {
-  //         // タグの変更がなければそのままフォームを送信
-  //         this.submit();
-  //       }
-        
-  //       // ------ お知らせのタグ追加ロジック適用ここまで ------
-  //     });
-  //   }
-    
-  //   // 投稿ボタンと下書き保存ボタンのイベントリスナー
-  //   const publishButton = document.querySelector('button[name="submitType"][value="publish"]');
-  //   const draftButton = document.querySelector('button[name="submitType"][value="draft"]');
-    
-  //   // 投稿ボタンのクリックイベント
-  //   if (publishButton) {
-  //     publishButton.addEventListener('click', function() {
-  //       const blogContent = extractBlogContent();
-  //       const blogTextContent = document.getElementById('blogTextContent');
-        
-  //       if (blogTextContent && blogContent) {
-  //         blogTextContent.value = blogContent;
-  //         console.log('公開用ブログ内容:', blogContent);
-  //       }
-  //     });
-  //   }
-    
-  //   // 下書き保存ボタンのクリックイベント
-  //   if (draftButton) {
-  //     draftButton.addEventListener('click', function() {
-  //       const blogContent = extractBlogContent();
-  //       const blogTextContent = document.getElementById('blogTextContent');
-        
-  //       if (blogTextContent && blogContent) {
-  //         blogTextContent.value = blogContent;
-  //         console.log('下書き用ブログ内容:', blogContent);
-  //       }
-  //     });
-  //   }
-    
-  //   // ブログ内容を抽出する関数
-  //   function extractBlogContent() {
-  //     const blogContainer = document.querySelector('.blog');
-  //     if (!blogContainer) return '';
-      
-  //     let cleanContent = '';
-      
-  //     // 各ブログ要素を処理
-  //     const blogElements = blogContainer.querySelectorAll('[data-type]');
-      
-  //     blogElements.forEach(element => {
-  //       const type = element.getAttribute('data-type');
-        
-  //       switch (type) {
-  //         case 'heading1':
-  //           const h1Text = element.querySelector('[contenteditable="true"]')?.textContent || '';
-  //           cleanContent += `<h2 contenteditable="true">${h1Text}</h2>`;
-  //           break;
-            
-  //         case 'heading2':
-  //           const h2Text = element.querySelector('[contenteditable="true"]')?.textContent || '';
-  //           cleanContent += `<h3 contenteditable="true">${h2Text}</h3>`;
-  //           break;
-            
-  //         case 'heading3':
-  //           const h3Text = element.querySelector('[contenteditable="true"]')?.textContent || '';
-  //           cleanContent += `<h4 contenteditable="true">${h3Text}</h4>`;
-  //           break;
-            
-  //         case 'text':
-  //           const pText = element.querySelector('[contenteditable="true"]')?.textContent || '';
-  //           cleanContent += `<p contenteditable="true">${pText}</p>`;
-  //           break;
-            
-  //         case 'image':
-  //           const imgSrc = element.querySelector('img')?.src || '';
-  //           if (imgSrc) {
-  //             cleanContent += `<div class="blog-image"><img src="${imgSrc}" alt="ブログ画像" style="max-width: 100%; height: auto;"></div>`;
-  //           }
-  //           break;
-            
-  //         case 'link':
-  //           const linkElement = element.querySelector('a');
-  //           if (linkElement) {
-  //             const linkUrl = linkElement.href || '';
-  //             const linkText = linkElement.textContent || '';
-  //             if (linkUrl && linkText) {
-  //               cleanContent += `<a href="${linkUrl}">${linkText}</a>`;
-  //             }
-  //           }
-  //           break;
-  //       }
-  //     });
-      
-  //     console.log('抽出されたブログ内容:', cleanContent);
-  //     return cleanContent;
-  //   }
-  // });
 
   // ブログエディタの初期化
   document.addEventListener('DOMContentLoaded', function() {
@@ -2557,45 +1961,6 @@ const input = document.getElementById('blogThumbnail') as HTMLInputElement;
         const type = this.getAttribute('data-type');
       });
     });
-    
-    // // フォーム送信処理の設定
-    // if (blogForm) {
-    //   blogForm.addEventListener('submit', function(e) {
-    //     const blogContent = extractBlogContent();
-    //     const blogTextContent = document.getElementById('blogTextContent');
-        
-    //     if (blogTextContent && blogContent) {
-    //       blogTextContent.value = blogContent;
-    //       console.log('ブログ内容をテキストエリアに設定:', blogContent);
-    //     }
-    //   });
-    // }
-    
-    // // 投稿ボタンのクリックイベント
-    // if (publishButton) {
-    //   publishButton.addEventListener('click', function() {
-    //     const blogContent = extractBlogContent();
-    //     const blogTextContent = document.getElementById('blogTextContent');
-        
-    //     if (blogTextContent && blogContent) {
-    //       blogTextContent.value = blogContent;
-    //       console.log('公開用ブログ内容:', blogContent);
-    //     }
-    //   });
-    // }
-    
-    // // 下書き保存ボタンのクリックイベント
-    // if (draftButton) {
-    //   draftButton.addEventListener('click', function() {
-    //     const blogContent = extractBlogContent();
-    //     const blogTextContent = document.getElementById('blogTextContent');
-        
-    //     if (blogTextContent && blogContent) {
-    //       blogTextContent.value = blogContent;
-    //       console.log('下書き用ブログ内容:', blogContent);
-    //     }
-    //   });
-    // }
     
     // 空のブログにプレースホルダーを追加
     initializeEmptyBlog();

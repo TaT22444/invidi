@@ -6,9 +6,10 @@ interface Props {
   hasMore: boolean;
   projectId: string;
   limit?: number;
+  availableTags?: string[];
 }
 
-const { blogs, hasMore, projectId, limit = 3 } = Astro.props;
+const { blogs, hasMore, projectId, limit = 3, availableTags = [] } = Astro.props;
 
 // 日付フォーマット関数
 function formatDate(date: Date): string {
@@ -23,6 +24,17 @@ function formatDate(date: Date): string {
 <section class="cms-container">
   <div class="inner">
     <h3 class="cms-container_title">ブログ</h3>
+    
+    <!-- {availableTags.length > 0 && (
+      <div class="tag-filter">
+        <div class="tag-list">
+          {availableTags.map((tag) => (
+            <span class="tag">{tag}</span>
+          ))}
+        </div>
+      </div>
+    )} -->
+    
     <ul class="blog_list" data-has-more={hasMore.toString()}>
       {blogs.length > 0 ? (
         blogs.map((blog) => (

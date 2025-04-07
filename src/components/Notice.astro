@@ -1,11 +1,19 @@
 ---
-// プロパティを受け取るように修正
+// Propsの定義
 interface Props {
-  existingNewsTags: string[];
+  projectId: string;
   noticeList: any[];
+  existingTags?: string[];
+  csrfToken?: string; // CSRFトークンを追加
 }
 
-const { existingNewsTags, noticeList } = Astro.props;
+// プロパティを展開
+const { 
+  projectId = "", 
+  noticeList = [], 
+  existingTags = [],
+  csrfToken = ""  // デフォルト値を設定
+} = Astro.props;
 ---
 
 <div class="cms_box cms-panel" id="notice-panel" style="display: block;">
@@ -13,6 +21,7 @@ const { existingNewsTags, noticeList } = Astro.props;
     <div class="inner">
       <form class="cms" method="POST" enctype="multipart/form-data" id="notice-form">
         <input type="hidden" name="action" value="create_notice" />
+        <input type="hidden" name="csrf_token" value={csrfToken} />
         <div class="cms-header">
           <p class="cms-header_title">お知らせ</p>
           <div class="box_btn_wrapper">
@@ -39,7 +48,7 @@ const { existingNewsTags, noticeList } = Astro.props;
           </div>
           <fieldset id="tag-fieldset">
             <p class="label">タグ</p>
-              {existingNewsTags.map((tag: unknown) => (
+              {existingTags.map((tag: unknown) => (
                 <div class="cms-body_wrapper" data-key={String(tag)}>
                   <input
                     type="checkbox"
@@ -73,7 +82,7 @@ const { existingNewsTags, noticeList } = Astro.props;
           <input type="radio" checked id="notice-tag-all" name="notice-option" value="すべて">
           <label for="notice-tag-all">すべて</label>
         </div>
-        {existingNewsTags.map((tag, index) => (
+        {existingTags.map((tag, index) => (
           <div class="option">
             <input type="radio" id={`notice-tag-${index}`} name="notice-option" value={tag}>
             <label for={`notice-tag-${index}`}>{tag}</label>

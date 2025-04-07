@@ -12,6 +12,15 @@ import { getProjectWithData } from '../../../services/projectService';
 
 // リクエストからユーザー情報を取得
 const { projectId } = Astro.params;
+
+// projectIdが存在しない場合はリダイレクト
+if (!projectId) {
+  return new Response(null, {
+    status: 303,
+    headers: { Location: "/" },
+  });
+}
+
 const { user, error: authError } = await getUserFromRequest(Astro.request);
 
 // 認証エラーはリダイレクト
@@ -44,9 +53,16 @@ if (dataError || !project) {
 // 追加データの表示上限
 const PAGER_LIMIT = 3;
 
+// 表示用にタグ情報を準備
+const blogTags = project.blogTags || [];
+const newsTags = project.newsTags || [];
+
+// ユーザー情報の補完
+const userDisplayName = user.displayName || "ゲスト";
+const userProjects = user.projects || [];
 ---
 
-<Layout title={project.name || "プロジェクト"} userId={user.uid} accountName={user.displayName} projects={user.projects || []}>
+<Layout title={project.name || "プロジェクト"} userId={user.uid} accountName={userDisplayName} projects={userProjects}>
   <div class="preview">
     <div class="preview_btns">
       <button class="preview_btn close">
@@ -65,18 +81,20 @@ const PAGER_LIMIT = 3;
       
       <!-- お知らせセクション -->
       <NoticeList 
-        notices={notices} 
-        hasMore={hasMoreNotices}
+        notices={notices || []} 
+        hasMore={hasMoreNotices || false}
         projectId={projectId}
         limit={PAGER_LIMIT}
+        availableTags={newsTags}
       />
       
       <!-- ブログセクション -->
       <BlogList 
-        blogs={blogs} 
-        hasMore={hasMoreBlogs}
+        blogs={blogs || []} 
+        hasMore={hasMoreBlogs || false}
         projectId={projectId}
         limit={PAGER_LIMIT}
+        availableTags={blogTags}
       />
       
       <!-- お問い合わせフォーム -->

@@ -92,6 +92,15 @@ export async function getProjectWithData(projectId: string, userId: string) {
       return { error };
     }
     
+    // プロジェクトからタグ情報を確実に取得
+    const { db } = getFirebaseAdmin();
+    const projectDoc = await db.collection("projects").doc(projectId).get();
+    const projectData = projectDoc.data() || {};
+    
+    // プロジェクトにタグ情報を追加
+    project.blogTags = projectData.blogTags || [];
+    project.newsTags = projectData.newsTags || [];
+    
     // ブログとお知らせを並列で取得
     const [noticeData, blogData] = await Promise.all([
       getNotices(projectId),

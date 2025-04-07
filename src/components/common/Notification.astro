@@ -1,0 +1,148 @@
+---
+// このコンポーネントはクライアントサイドでJavaScriptによって動的に生成されるため、
+// propsは定義のみで実際には使用しません
+interface Props {
+  id?: string;
+}
+
+const { id = "notification-container" } = Astro.props;
+---
+
+<div id={id} class="notification-container"></div>
+
+<style>
+  .notification-container {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    z-index: 9998;
+    pointer-events: none;
+  }
+  
+  :global(.notification) {
+    margin-bottom: 10px;
+    padding: 15px 20px;
+    background-color: white;
+    border-radius: 4px;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    min-width: 300px;
+    max-width: 500px;
+    pointer-events: auto;
+    opacity: 0;
+    transform: translateX(50px);
+    transition: opacity 0.3s, transform 0.3s;
+  }
+  
+  :global(.notification.show) {
+    opacity: 1;
+    transform: translateX(0);
+  }
+  
+  :global(.notification.success) {
+    border-left: 4px solid #4CAF50;
+  }
+  
+  :global(.notification.error) {
+    border-left: 4px solid #F44336;
+  }
+  
+  :global(.notification.info) {
+    border-left: 4px solid #2196F3;
+  }
+  
+  :global(.notification .close-btn) {
+    background: none;
+    border: none;
+    font-size: 20px;
+    cursor: pointer;
+    color: #aaa;
+    margin-left: 10px;
+  }
+  
+  :global(.notification .close-btn:hover) {
+    color: #333;
+  }
+</style>
+
+<script>
+  // 通知を表示する関数をグローバルに登録
+  window.showNotification = function(message, type = 'info', duration = 5000) {
+    const container = document.getElementById('notification-container');
+    if (!container) return;
+    
+    const notification = document.createElement('div');
+    notification.className = `notification ${type}`;
+    notification.innerHTML = `
+      <p>${message}</p>
+      <button class="close-btn">&times;</button>
+    `;
+    
+    container.appendChild(notification);
+    
+    // フェードイン
+    setTimeout(() => {
+      notification.classList.add('show');
+    }, 10);
+    
+    // 指定した時間後に自動で消える
+    if (duration > 0) {
+      setTimeout(() => {
+        closeNotification(notification);
+      }, duration);
+    }
+    
+    // 閉じるボタン
+    const closeBtn = notification.querySelector('.close-btn');
+    if (closeBtn) {
+      closeBtn.addEventListener('click', () => {
+        closeNotification(notification);
+      });
+    }
+    
+    function closeNotification(element) {
+      element.classList.remove('show');
+      setTimeout(() => {
+        element.remove();
+      }, 300);
+    }
+  };
+
+  // URLパラメータを確認して通知を表示
+  document.addEventListener('DOMContentLoaded', function() {
+    const urlParams = new URLSearchParams(window.location.search);
+    const submitted = urlParams.get('submitted');
+    const type = urlParams.get('type');
+    const error = urlParams.get('error');
+    
+    if (error) {
+      window.showNotification(decodeURIComponent(error), 'error');
+      // URLからパラメータを削除
+      window.history.replaceState({}, document.title, window.location.pathname);
+    } else if (submitted === 'true') {
+      // 送信成功時のメッセージを表示
+      const message = type === 'blog' 
+        ? 'ブログが正常に投稿されました！' 
+        : type === 'notice' 
+          ? 'お知らせが正常に投稿されました！' 
+          : type === 'product' 
+            ? '商品情報が更新されました！'
+            : '正常に処理されました！';
+            
+      window.showNotification(message, 'success');
+      // URLからパラメータを削除
+      window.history.replaceState({}, document.title, window.location.pathname);
+    }
+  });
+</script>
+
+<script>
+  // グローバル型定義
+  declare global {
+    interface Window {
+      showNotification: (message: string, type?: 'success' | 'error' | 'info', duration?: number) => void;
+    }
+  }
+</script> 

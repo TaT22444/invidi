@@ -1,11 +1,19 @@
 ---
-// プロパティを受け取るように修正
+// Props の定義
 interface Props {
-  existingBlogTags: string[];
+  projectId: string;
   blogList: any[];
+  existingBlogTags?: string[];
+  csrfToken?: string; // CSRFトークンを追加
 }
 
-const { existingBlogTags, blogList } = Astro.props;
+// プロパティを展開
+const { 
+  projectId, 
+  blogList = [], 
+  existingBlogTags = [],
+  csrfToken = ""  // デフォルト値を設定
+} = Astro.props;
 ---
 
 <div class="cms_box cms-panel" id="blog-panel" style="display: none;">
@@ -14,6 +22,7 @@ const { existingBlogTags, blogList } = Astro.props;
       <!-- <div class="cms"> -->
       <form class="cms" method="POST" enctype="multipart/form-data">
         <input type="hidden" name="action" value="create_blog" />
+        <input type="hidden" name="csrf_token" value={csrfToken} />
         
         <input type="hidden" id="blog-submit-type" name="submitType" value="draft" />
         

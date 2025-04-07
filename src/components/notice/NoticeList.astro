@@ -6,9 +6,10 @@ interface Props {
   hasMore: boolean;
   projectId: string;
   limit?: number;
+  availableTags?: string[];
 }
 
-const { notices, hasMore, projectId, limit = 3 } = Astro.props;
+const { notices, hasMore, projectId, limit = 3, availableTags = [] } = Astro.props;
 
 // 日付フォーマット関数
 function formatDate(date: Date): string {
