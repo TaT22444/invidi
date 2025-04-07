@@ -197,6 +197,12 @@ console.log(`StatsSection[${id}] データ:`, { parsedLabels, parsedDataPoints }
 <style lang="scss">
   .contents {
     margin-top: 40px;
+
+    &::first-of-type{
+      margin-top: 16px;
+      padding-top: 0;
+      border-top: none;
+    }
   }
 
   .wrapper {
@@ -228,6 +234,7 @@ console.log(`StatsSection[${id}] データ:`, { parsedLabels, parsedDataPoints }
     border: 1px solid var(--main-border-color);
     border-radius: var(--border-radius-m);
     margin-top: 8px;
+    margin-inline: auto;
 
     &:first-of-type {
       margin-top: 16px;

@@ -1,10 +1,24 @@
 ---
-interface Props {
+export interface Props {
   project: any;
-  projectId: string;
+  projectId: string | undefined;
+  activeTab?: 'summary' | 'profile' | 'cms' | 'form' | 'analytics' | 'preview';
 }
 
-const { project, projectId } = Astro.props;
+const { projectId = '', activeTab = 'summary', project } = Astro.props;
+
+// projectIdがundefinedの場合に備えてデフォルト値を設定
+const safeProjectId = projectId || '';
+
+// タブの定義
+const tabs = [
+  { id: 'summary', label: 'サマリー' },
+  { id: 'profile', label: 'プロフィール' },
+  { id: 'cms', label: 'CMS' },
+  { id: 'form', label: 'フォーム' },
+  { id: 'analytics', label: 'アナリティクス' },
+  { id: 'preview', label: 'プレビュー' }
+];
 ---
 
 <header class="preview_header">
@@ -16,21 +30,229 @@ const { project, projectId } = Astro.props;
   </div>
   <nav class="preview_header_nav">
     <ul class="preview_header_nav_list">
-      <li class="preview_header_nav_item">
-        <a href=`/projects/${projectId}` class="preview_header_nav_link" id="switch-btn">サマリー</a>
-      </li>
-      <li class="preview_header_nav_item">
-        <a href=`/projects/${projectId}/profile` class="preview_header_nav_link" id="switch-btn">プロフィール</a>
-      </li>
-      <li class="preview_header_nav_item">
-        <a href=`/projects/${projectId}/form` class="preview_header_nav_link" id="switch-btn">フォーム</a>
-      </li>
-      <li class="preview_header_nav_item">
-        <a href=`/projects/${projectId}/cms` class="preview_header_nav_link" id="switch-btn">CMS</a>
-      </li>
-      <li class="preview_header_nav_item">
-        <a href=`/projects/${projectId}/analitics` class="preview_header_nav_link" id="switch-btn">アナリティクス</a>
-      </li>
+      {tabs.map(tab => (
+        <li class="nav_item">
+          <button
+            type="button"
+            class={`nav_link ${activeTab === tab.id ? 'active' : ''}`}
+            data-tab-id={tab.id}
+          >
+            {tab.label}
+          </button>
+        </li>
+      ))}
     </ul>
   </nav>
 </header>
+
+<style lang="scss">
+
+
+  .nav {
+    position: relative;
+    margin-top: 16px;
+    width: 100%;
+    overflow: hidden;
+    border-radius: var(--border-radius-m);
+    background-color: var(--sub-bg-color);
+    border: 1px solid var(--main-border-color);
+  }
+
+  .nav_btn {
+    position: absolute;
+    right: 0;
+    height: 100%;
+    padding: 0 8px;
+    background-color: var(--sub-bg-color);
+    border-left: 1px solid var(--main-border-color);
+    z-index: 10;
+  }
+
+  .nav_list {
+    width: 100%;
+    display: flex;
+    flex-wrap: nowrap;
+    gap: 8px;
+    align-items: center;
+    padding-inline: 24px;
+    overflow-x: auto;
+  }
+
+  .nav_item .active {
+    color: var(--main-font-color);
+    border-bottom: 1px solid var(--accent-bg-color);
+  }
+
+  .nav_link {
+    position: relative;
+    padding: 16px 24px;
+    text-wrap: nowrap;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--sub-font-color);
+    font-size: var(--font-size-xxs);
+    font-weight: 400;
+    transition: all .2s;
+    background: none;
+    border: none;
+    cursor: pointer;
+  }
+
+  .nav_link:hover {
+    color: var(--main-font-color);
+    transition: all .2s;
+  }
+
+  .nav_link:hover::after {
+    content: "";
+    position: absolute;
+    bottom: 0;
+    height: 1px;
+    background-color: var(--accent-bg-color);
+    animation: nav_border .2s forwards;
+  }
+
+  @keyframes nav_border {
+    0% { width: 0; }
+    100% { width: 100%; }
+  }
+
+  .preview{
+  width: 100%;
+
+  &_btns{
+    display: flex;
+    justify-content: right;
+    align-items: center;
+    gap: 8px;
+    margin-top: 8px;
+  }
+
+  &_btn{
+    padding: 12px 16px;
+    border-radius: var(--border-radius-m);
+    font-size: var(--font-size-xxs);
+    color: var(--main-font-color);
+    border: 1px solid var(--main-border-color);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+
+    &.update{
+      background-color: var(--accent-bg-color);
+      border: 1px solid var(--accent-bg-color);
+    }
+  }
+  
+  &_inner{
+    width: 100%;
+    margin-inline: auto;
+  }
+
+  &_header{
+    position: sticky;
+    top: 16px;
+    left: 0;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0 16px 0 24px;
+    margin-top: 16px;
+    border-radius: var(--border-radius-m);
+    background-color: var(--sub-bg-color);
+    border: 1px solid var(--main-border-color);
+    z-index: 999;
+
+    &_title-wrapper{
+      display: flex;
+      align-items: center;
+      gap: 16px;
+
+      .follow-btn{
+        padding: 8px 16px;
+        border-radius: var(--border-radius-m);
+        font-size: var(--font-size-xxs);
+        color: var(--main-font-color);
+        border: 1px solid var(--main-border-color);
+        background-color: var(--accent-bg-color);
+        border: 1px solid var(--accent-bg-color);
+        font-weight: 500;
+      }
+    }
+    
+    &_title{
+      font-size: var(--font-size-m);
+      font-weight: var(--font-weight-bold);
+      color: var(--main-font-color);
+    }
+
+    &_nav{
+      position: relative;
+      overflow: hidden;
+
+      &_btn{
+        position: absolute;
+        right: 0;
+        height: 100%;
+        padding: 0 8px;
+        background-color: var(--sub-bg-color);
+        border-left: 1px solid var(--main-border-color);
+        z-index: 10;
+      }
+
+      &_list{
+        width: 100%;
+        display: flex;
+        flex-wrap: nowrap;
+        gap: 8px;
+        align-items: center;
+        overflow-x: auto;
+      }
+
+      &_item{
+        >.active{
+          color: var(--main-font-color);
+          border-bottom: 1px solid var(--accent-bg-color);
+        }
+      }
+
+      &_link{
+        position: relative;
+        padding: 16px 24px;
+        text-wrap: nowrap;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: var(--sub-font-color);
+        font-size: var(--font-size-xs);
+        font-weight: 400;
+        transition: all .2s;
+
+        &:hover{
+          color: var(--main-font-color);
+          transition: all .2s;
+
+          &::after{
+            content: "";
+            position: absolute;
+            bottom: 0;
+            height: 1px;
+            background-color: var(--accent-bg-color);
+            animation: nav_border .2s forwards;
+
+            @keyframes nav_border {
+              0%{
+                width: 0;
+              }
+              100%{
+                width: 100%;
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+</style>

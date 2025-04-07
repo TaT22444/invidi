@@ -1,0 +1,654 @@
+---
+export const prerender = false;
+import "../../styles/cms.css"
+// ◆ Layout およびチャートコンポーネントをインポート
+import Layout from "../../layouts/Layout.astro";
+import MyLineChart from "../../components/MyLineChart.jsx";
+import PerformanceChart from "../../components/PerformanceChart.jsx";
+import ProjectNav from "../../components/ProjectNav.astro";
+
+// ◆ 最適化: リファクタリング後のコンポーネントをインポート
+import AnalyticsNav from "../../components/analytics/AnalyticsNav.astro";
+import PeriodSelector from "../../components/analytics/PeriodSelector.astro";
+import StatsSummary from "../../components/analytics/StatsSummary.astro";
+import PerformanceMetrics from "../../components/analytics/PerformanceMetrics.astro";
+
+// ◆ 最適化: サービスレイヤーのインポート
+import { getUserFromRequest } from '../../services/authService';
+import { getProjectData } from '../../services/projectService';
+import { getProjectStatistics, getProjectStatisticsSummary } from '../../services/analyticsService';
+
+// ◆ 最適化: パラメータを取得
+const { projectId } = Astro.params;
+if (!projectId) {
+  return new Response("プロジェクトIDが指定されていません", { status: 400 });
+}
+
+// ◆ 最適化: 認証ユーザー情報の取得をserviceに委任
+const { user, error: authError } = await getUserFromRequest(Astro.request);
+
+// 認証エラーはリダイレクト
+if (authError || !user) {
+  console.error("認証されていないユーザーです");
+  return new Response(null, {
+    status: 303,
+    headers: { Location: "/" },
+  });
+}
+
+// ◆ 最適化: プロジェクトデータの取得をserviceに委任
+const { project, error: projectError } = await getProjectData(projectId, user.uid);
+
+// プロジェクトが見つからない場合やアクセス権がない場合はリダイレクト
+if (projectError || !project) {
+  console.error("該当のプロジェクトが見つかりません、またはアクセス権限がありません");
+  return new Response(null, {
+    status: 303,
+    headers: { Location: "/" },
+  });
+}
+
+// ◆ 最適化: 統計サマリーデータの取得をserviceに委任
+const totalStats = await getProjectStatisticsSummary(projectId);
+
+// ◆ 最適化: デフォルト期間の統計データを取得
+const analyticsData = await getProjectStatistics(projectId, '1w');
+
+// ◆ 最適化: グラフ設定を動的に生成
+const graphConfig = {
+  maxDisplayCount: Math.ceil(Math.max(...analyticsData.chartData.displayData) * 1.2 / 10) * 10,
+  maxClickCount: Math.ceil(Math.max(...analyticsData.chartData.clickData) * 1.2 / 10) * 10,
+  maxCtrPercent: 100, // CTRは固定で100%
+  colors: {
+    display: '#468FDD',
+    click: '#4CAF50',
+    ctr: '#FFA726'
+  }
+};
+
+// ◆ 最適化: グラフの表示状態の初期値を設定
+const initialGraphState = {
+  showDisplay: true,
+  showClick: true,
+  showCtr: true
+};
+
+// ◆ Layout.astro に渡すためのaccountNameを設定
+const accountName = user.displayName || "ログイン";
+---
+
+<div class="pan">
+  <p class="pan_item">
+    <a href={user.uid ? `/${user.uid}` : "/"}>トップ</a>
+    <span>
+      <svg width="7" height="7" viewBox="0 0 7 7" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path d="M0.456 6.356V5.18L3.156 4.208L4.98 3.548V3.5L3.156 2.828L0.456 1.856V0.692L6.384 2.996V4.04L0.456 6.356Z" fill="#C4C4C4"/>
+      </svg>          
+    </span>
+    <span>{project.name || "(No Name)"}</span>
+    <span>
+      <svg width="7" height="7" viewBox="0 0 7 7" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path d="M0.456 6.356V5.18L3.156 4.208L4.98 3.548V3.5L3.156 2.828L0.456 1.856V0.692L6.384 2.996V4.04L0.456 6.356Z" fill="#C4C4C4"/>
+      </svg>          
+    </span>
+    <span>アナリティクス</span>
+  </p>
+</div>
+
+<ProjectNav projectId={projectId} activeTab="analytics" />
+
+<section class="ana-box">
+  <div class="inner">
+    <!-- ◆ 最適化: タブナビゲーションをコンポーネント化 -->
+    <AnalyticsNav projectId={projectId} activeTab="search-performance" />
+    
+    <!-- ◆ 最適化: 統計サマリーをコンポーネント化 -->
+    <StatsSummary 
+      displayCount={totalStats.displayCount} 
+      clickCount={totalStats.clickCount} 
+      ctr={totalStats.ctr} 
+    />
+    
+    <!-- ◆ 最適化: 期間選択UIをコンポーネント化 -->
+    <PeriodSelector activePeriod="1w" />
+  </div>
+</section>
+
+<!-- 各タブコンテンツエリア -->
+<!-- 検索パフォーマンスタブ -->
+<div class="container tab-switch active" id="search-performance">
+  <section class="contents">
+    <div class="section_title_wrapper">
+      <h3 class="section_title">サイト全体</h3>
+      <p class="section_period">{analyticsData.periodLabel}</p>
+    </div>
+    <div class="box">
+      <div class="inner">
+        <!-- ◆ 最適化: パフォーマンスメトリクスをコンポーネント化 -->
+        <PerformanceMetrics 
+          labels={analyticsData.chartData.labels}
+          displayData={analyticsData.chartData.displayData}
+          clickData={analyticsData.chartData.clickData}
+          ctrData={analyticsData.chartData.ctrData}
+          period="1w"
+        />
+      </div>
+    </div>
+  </section>
+  <section class="contents">
+    <div class="section_title_wrapper">
+      <h3 class="section_title">ページごと</h3>
+      <p class="section_period">{analyticsData.periodLabel}</p>
+    </div>
+    <div class="box">
+      <div class="inner">
+        <div class="page-metrics">
+          <table class="metrics-table">
+            <thead>
+              <tr>
+                <th class="path-column">ページ名 / パス</th>
+                <th class="metric-column">表示回数</th>
+                <th class="metric-column">クリック数</th>
+                <th class="metric-column">CTR</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td class="path-cell">
+                  トップページ / https://invidi.netlify.app/{project.id}
+                </td>
+                <td class="metric-cell">120</td>
+                <td class="metric-cell">12</td>
+                <td class="metric-cell">10%</td>
+              </tr>
+              <tr>
+                <td class="path-cell">
+                  プロフィールページ / https://invidi.netlify.app/{project.id}/profile
+                </td>
+                <td class="metric-cell">80</td>
+                <td class="metric-cell">8</td>
+                <td class="metric-cell">10%</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </section>
+</div>
+
+<!-- ユーザータブ -->
+<div class="container tab-switch" id="users">
+  <section class="contents">
+    <div class="section_title_wrapper">
+      <h3 class="section_title">ユーザー統計</h3>
+      <p class="section_period">{analyticsData.periodLabel}</p>
+    </div>
+    <div class="box">
+      <div class="inner">
+        <div class="wrapper">
+          <p class="graph_desc">ユニークユーザー数</p>
+          <p class="graph_value">135</p>
+        </div>
+        <MyLineChart
+          client:load
+          dataLabel="ユーザー数"
+          labels={analyticsData.chartData.labels}
+          dataPoints={analyticsData.chartData.displayData}
+          borderColor="#468FDD"
+        />
+      </div>
+    </div>
+  </section>
+</div>
+
+<!-- ブログタブ -->
+<div class="container tab-switch" id="blog">
+  <section class="contents">
+    <div class="section_title_wrapper">
+      <h3 class="section_title">ブログ統計</h3>
+      <p class="section_period">{analyticsData.periodLabel}</p>
+    </div>
+    <div class="box">
+      <div class="inner">
+        <div class="wrapper">
+          <p class="graph_desc">記事別アクセス数</p>
+          <p class="graph_value">87</p>
+        </div>
+        <MyLineChart
+          client:load
+          dataLabel="閲覧数"
+          labels={analyticsData.chartData.labels}
+          dataPoints={analyticsData.chartData.displayData}
+          borderColor="#468FDD"
+        />
+      </div>
+    </div>
+  </section>
+</div>
+
+<!-- 検索ランキングタブ -->
+<div class="container tab-switch" id="search-ranking">
+  <section class="contents">
+    <div class="section_title_wrapper">
+      <h3 class="section_title">検索キーワードランキング</h3>
+      <p class="section_period">{analyticsData.periodLabel}</p>
+    </div>
+    <div class="box">
+      <div class="inner">
+        <p>まだデータがありません</p>
+      </div>
+    </div>
+  </section>
+</div>
+
+<style lang="scss" scoped>
+  .pan{
+    margin-top: 8px;
+    
+    &_item{
+      display: flex;
+      gap: 8px;
+      color: var(--sub-font-color);
+      font-size: var(--font-size-xs);
+      font-weight: 300;
+
+      >a{
+        color: var(--main-font-color);
+      }
+    }
+  }
+
+  .nav{
+    position: relative;
+    margin-top: 16px;
+    width: 100%;
+    overflow: hidden;
+    border-radius: var(--border-radius-m);
+    background-color: var(--sub-bg-color);
+    border: 1px solid var(--main-border-color);
+
+    &_btn{
+      position: absolute;
+      right: 0;
+      height: 100%;
+      padding: 0 8px;
+      background-color: var(--sub-bg-color);
+      border-left: 1px solid var(--main-border-color);
+      z-index: 10;
+    }
+
+    &_list{
+      width: 100%;
+      display: flex;
+      flex-wrap: nowrap;
+      gap: 8px;
+      align-items: center;
+      padding-inline: 24px;
+      overflow-x: auto;
+    }
+
+    &_item{
+      >.active{
+        color: var(--main-font-color);
+        border-bottom: 1px solid var(--accent-bg-color);
+      }
+    }
+
+    &_link{
+      position: relative;
+      padding: 16px 40px;
+      text-wrap: nowrap;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--sub-font-color);
+      font-size: var(--font-size-xs);
+      font-weight: 400;
+      transition: all .2s;
+
+      &:hover{
+        color: var(--main-font-color);
+        transition: all .2s;
+
+        &::after{
+          content: "";
+          position: absolute;
+          bottom: 0;
+          height: 1px;
+          background-color: var(--accent-bg-color);
+          animation: nav_border .2s forwards;
+
+          @keyframes nav_border {
+            0%{
+              width: 0;
+            }
+            100%{
+              width: 100%;
+            }
+          }
+        }
+      }
+    }
+  }
+
+  .tabs{
+
+    &_list{
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+    &_item{
+    }
+    &_btn{
+      padding: 12px 16px;
+      border-radius: var(--border-radius-s);
+      font-size: var(--font-size-xxs);
+      font-weight: 400;
+      color: var(--sub-font-color);
+      
+      &.active{
+        background-color: var(--btn-bg-color);
+        border: 1px solid var(--main-border-color);
+        color: var(--main-font-color);
+      }
+    }
+  }
+
+  .ana-box{
+    width: 100%;
+    margin-top: 16px;
+    background-color: var(--sub-bg-color);
+    border: 1px solid var(--main-border-color);
+    border-radius: var(--border-radius-m);
+
+    >.inner{
+      padding: 16px 24px;
+    }
+  }
+
+  .tab_box{
+    margin-top: 32px;
+
+    &_title{
+      font-size: var(--font-size-l);
+      font-weight: 500;
+      color: var(--main-font-color);
+    }
+
+    &_desc{
+      font-size: var(--font-size-xs);
+      font-weight: 400;
+      color: var(--sub-font-color);
+      margin-top: 8px;
+    }
+
+    &_cards{
+      margin-top: 24px;
+      padding-bottom: 24px;
+      display: flex;
+      gap: 16px;
+      border-bottom: 1px solid var(--main-border-color);
+    }
+
+    &_card{
+      padding: 16px;
+      border-radius: var(--border-radius-m);
+      background-color: var(--item-bg-color);
+      border: 1px solid var(--main-border-color);
+
+      >p{
+        display: flex;
+        align-items: center;
+        gap: 8px; 
+      }
+
+      &_label{
+        font-size: var(--font-size-xxs);
+        color: var(--sub-font-color);
+      }
+
+      &_value{
+        font-size: var(--font-size-m);
+        color: var(--main-font-color);
+      }
+    }
+  }
+
+  .tab_options{
+    margin-top: 24px;
+    display: flex;
+    align-items: center;
+    gap: 8px; 
+  }
+  .tab_option{
+    padding: 8px 12px;
+    border-radius: var(--border-radius-m);
+    font-size: var(--font-size-xxs);
+    color: var(--sub-font-color);
+
+    &.active{
+      color: var(--main-font-color);
+      background-color: var(--btn-bg-color);
+      border: 1px solid var(--main-border-color);
+    }
+
+    &_add{
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      padding: 8px 12px;
+      border-radius: var(--border-radius-m);
+      font-size: var(--font-size-xxs);
+
+      &_label{
+        font-size: var(--font-size-xxs);
+        color: var(--main-font-color);
+      }
+    }
+  }
+
+  .box{
+    background-color: var(--sub-bg-color);
+    border: 1px solid var(--main-border-color);
+    border-radius: var(--border-radius-m);
+    margin-top: 16px;
+
+    &:first-of-type{
+      margin-top: 16px;
+    }
+
+    >.inner{
+      padding: 16px;
+    }
+  }
+
+  .wrapper{
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 16px;
+    }
+
+    .graph_desc{
+        font-size: var(--font-size-xxs);
+        color: var(--sub-font-color);
+        padding-right: 8px;
+        border-right: 1px solid var(--sub-border-color);
+      }
+
+      .graph_value{
+        font-size: var(--font-size-xs);
+        font-weight: 500;
+        color: var(--main-font-color);
+      }
+
+  .contents{
+    width: calc(100% - 32px);
+    margin-inline: 8px;
+    margin-top: 40px;
+
+    .section_title_wrapper{
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+    .section_title{
+      font-size: var(--font-size-m);
+      color: var(--main-font-color);
+    }
+
+    .section_period{
+      font-size: var(--font-size-xxs);
+      color: var(--sub-font-color);
+    }
+  }
+
+  /* タブコンテンツ用のスタイルを追加 */
+  .tab-content {
+    display: none;
+    
+    &.active {
+      display: block;
+    }
+  }
+
+  .performance-metrics {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+  }
+  
+  .metric {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+  
+  .metric-indicator {
+    width: 12px;
+    height: 12px;
+    border-radius: 2px;
+    display: inline-block;
+  }
+  
+  .metric-label {
+    font-size: var(--font-size-xxs);
+    color: var(--sub-font-color);
+  }
+  
+  .metric-value {
+    font-size: var(--font-size-xs);
+    font-weight: 500;
+  }
+  
+  .display-value {
+    color: #468FDD;
+  }
+  
+  .click-value {
+    color: #4CAF50;
+  }
+  
+  .ctr-value {
+    color: #FFA726;
+  }
+  
+  .display-color {
+    background-color: #468FDD;
+  }
+  
+  .click-color {
+    background-color: #4CAF50;
+  }
+  
+  .ctr-color {
+    background-color: #FFA726;
+  }
+
+  .metric-toggle {
+    display: flex;
+    align-items: center;
+    cursor: pointer;
+  }
+
+  .metric-checkbox {
+    display: none;
+  }
+
+  .metric-checkbox:not(:checked) + .metric-indicator {
+    opacity: 0.3;
+  }
+
+  .performance-chart {
+    width: 100%;
+    position: relative;
+  }
+
+  /* チェックボックスがオフの時のスタイル */
+  .metric-checkbox:not(:checked) ~ .metric-value {
+    opacity: 0.3;
+  }
+
+  .page-metrics {
+    width: 100%;
+    overflow-x: auto;
+  }
+
+  .metrics-table {
+    width: 100%;
+    border-collapse: collapse;
+
+    tr{
+      padding-inline: 16px;
+    }
+    
+    th, td {
+      padding: 16px 0;
+      text-align: left;
+    }
+
+    th {
+      font-size: var(--font-size-xs);
+      font-weight: 400;
+      color: var(--sub-font-color);
+      border-bottom: 1px solid var(--main-border-color);
+    }
+
+    td{
+      border-bottom: 1px solid var(--sub-border-color);
+    }
+
+    .path-column {
+      width: 60%;
+    }
+
+    .metric-column {
+      width: 13.33%;
+      text-align: right;
+    }
+
+    .path-cell {
+      font-size: var(--font-size-xs);
+      color: var(--main-font-color);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 0;
+    }
+
+    .metric-cell {
+      font-size: var(--font-size-xs);
+      color: var(--main-font-color);
+      text-align: right;
+    }
+
+    tbody tr:hover {
+      background-color: var(--hover-bg-color);
+    }
+  }
+</style>
+
+<!-- 最適化: 外部JavaScriptファイルをインポート -->
+<script src="../../scripts/analytics-client.ts"></script>

@@ -18,7 +18,7 @@ document.addEventListener('DOMContentLoaded', () => {
 // タブナビゲーション設定
 function setupTabNavigation() {
   const tabButtons = document.querySelectorAll('.tabs_btn');
-  const tabContents = document.querySelectorAll('.tab-content');
+  const tabContents = document.querySelectorAll('.tab-switch');
 
   tabButtons.forEach(button => {
     button.addEventListener('click', () => {

@@ -1,0 +1,135 @@
+---
+export const prerender = false;
+import '../../styles/preview.scss';
+import ProjectHeader from "../../components/project/ProjectHeader.astro";
+import ProjectHero from "../../components/project/ProjectHero.astro";
+import NoticeList from "../../components/notice/NoticeList.astro";
+import BlogList from "../../components/blog/BlogList.astro";
+
+import { getUserFromRequest } from '../../services/authService';
+import { getProjectWithData } from '../../services/projectService';
+
+// リクエストからユーザー情報を取得
+const { projectId } = Astro.params;
+
+// projectIdが存在しない場合はリダイレクト
+if (!projectId) {
+  return new Response(null, {
+    status: 303,
+    headers: { Location: "/" },
+  });
+}
+
+const { user, error: authError } = await getUserFromRequest(Astro.request);
+
+// 認証エラーはリダイレクト
+if (authError || !user) {
+  return new Response(null, {
+    status: 303,
+    headers: { Location: "/" },
+  });
+}
+
+// プロジェクトデータ取得（ブログ、お知らせを含む）
+const { 
+  project, 
+  notices, 
+  blogs, 
+  hasMoreBlogs, 
+  hasMoreNotices, 
+  error: dataError 
+} = await getProjectWithData(projectId, user.uid);
+
+// プロジェクトが見つからない場合やアクセス権がない場合はリダイレクト
+if (dataError || !project) {
+  console.error("Project data error:", dataError);
+  return new Response(null, {
+    status: 303,
+    headers: { Location: "/" },
+  });
+}
+
+// 追加データの表示上限
+const PAGER_LIMIT = 3;
+
+// 表示用にタグ情報を準備
+const blogTags = project.blogTags || [];
+const newsTags = project.newsTags || [];
+
+// ユーザー情報の補完
+const userDisplayName = user.displayName || "ゲスト";
+const userProjects = user.projects || [];
+---
+
+<div class="preview">
+  <div class="preview_btns">
+    <button class="preview_btn close">
+      <span>プレビューを閉じる</span>
+    </button>
+    <button class="preview_btn update">
+      <span>更新</span>
+    </button>
+  </div>
+  <div class="preview_inner">
+    <!-- プロジェクトヘッダー -->
+    <ProjectHeader project={project} projectId={projectId} />
+    
+    <!-- プロジェクトヒーローセクション -->
+    <ProjectHero project={project} />
+    
+    <!-- お知らせセクション -->
+    <NoticeList 
+      notices={notices || []} 
+      hasMore={hasMoreNotices || false}
+      projectId={projectId}
+      limit={PAGER_LIMIT}
+      availableTags={newsTags}
+    />
+    
+    <!-- ブログセクション -->
+    <BlogList 
+      blogs={blogs || []} 
+      hasMore={hasMoreBlogs || false}
+      projectId={projectId}
+      limit={PAGER_LIMIT}
+      availableTags={blogTags}
+    />
+    
+    <!-- お問い合わせフォーム -->
+    <section class="form-container">
+      <div class="inner">
+        <h3 class="form-container_title">お問い合わせ</h3>
+        <p class="form-container_desc">お問い合わせのテキストを入力してください。</p>
+        <form class="form">
+          <div class="form-body">
+            <div class="form-body_input-wrapper">
+              <label for="corp_name">会社名</label>
+              <input type="text" name="corp_name" placeholder="◯◯株式会社△△部">
+            </div>
+            <div class="form-body_input-wrapper">
+              <label for="name">ご氏名</label>
+              <input type="text" name="name" placeholder="サイト 太郎">
+            </div>
+            <div class="form-body_input-wrapper">
+              <label for="email">メールアドレス</label>
+              <input type="email" name="email" placeholder="メールアドレス">
+            </div>
+            <fieldset id="optionFieldset">
+              <p class="subject_label">ご用件</p>
+              <div class="form-body_wrapper">
+                <input type="checkbox" name="3st_elem">
+                <label for="3st_elem">イベント出演の依頼</label>
+              </div>
+            </fieldset>
+            <textarea class="form-body_wrapper_textarea" name="otherRequest" rows="4" cols="50" placeholder="自由記入欄"></textarea>
+          </div>
+          <button class="form-body_btn">
+            <p>送信</p>
+          </button>
+        </form>
+      </div>
+    </section>
+  </div>
+</div>
+
+<script src="../../scripts/preview-client.js"></script>

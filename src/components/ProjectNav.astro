@@ -1,5 +1,4 @@
 ---
-// プロジェクトナビゲーションコンポーネント
 export interface Props {
   projectId: string | undefined;
   activeTab?: 'summary' | 'profile' | 'cms' | 'form' | 'analytics' | 'preview';
@@ -12,24 +11,18 @@ const safeProjectId = projectId || '';
 
 // タブの定義
 const tabs = [
-  { id: 'summary', label: 'サマリー', path: `/projects/${safeProjectId}` },
-  { id: 'profile', label: 'プロフィール', path: `/projects/${safeProjectId}/profile` },
-  { id: 'cms', label: 'CMS', path: `/projects/${safeProjectId}/cms` },
-  { id: 'form', label: 'フォーム', path: `/projects/${safeProjectId}/form` },
-  { id: 'analytics', label: 'アナリティクス', path: `/projects/${safeProjectId}/analitics` },
-  { id: 'preview', label: 'プレビュー', path: `/projects/${safeProjectId}/preview` }
+  { id: 'summary', label: 'サマリー' },
+  { id: 'profile', label: 'プロフィール' },
+  { id: 'cms', label: 'CMS' },
+  { id: 'form', label: 'フォーム' },
+  { id: 'analytics', label: 'アナリティクス' },
+  { id: 'preview', label: 'プレビュー' }
 ];
 ---
 
 <nav class="nav">
   <button class="nav_btn">
-    <svg
-      width="16"
-      height="16"
-      viewBox="0 0 16 16"
-      fill="none"
-      xmlns="http://www.w3.org/2000/svg"
-    >
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
       <g clip-path="url(#clip0_623_115)">
         <path
           fill-rule="evenodd"
@@ -45,23 +38,24 @@ const tabs = [
       </defs>
     </svg>
   </button>
+
   <ul class="nav_list">
     {tabs.map(tab => (
       <li class="nav_item">
-        <a 
-          href={tab.path} 
-          class={`nav_link ${activeTab === tab.id ? 'active' : ''}`} 
-          id="switch-btn"
+        <button
+          type="button"
+          class={`nav_link ${activeTab === tab.id ? 'active' : ''}`}
+          data-tab-id={tab.id}
         >
           {tab.label}
-        </a>
+        </button>
       </li>
     ))}
   </ul>
 </nav>
 
-<style>
-  .nav{
+<style lang="scss">
+  .nav {
     position: relative;
     margin-top: 16px;
     width: 100%;
@@ -71,7 +65,7 @@ const tabs = [
     border: 1px solid var(--main-border-color);
   }
 
-  .nav_btn{
+  .nav_btn {
     position: absolute;
     right: 0;
     height: 100%;
@@ -81,7 +75,7 @@ const tabs = [
     z-index: 10;
   }
 
-  .nav_list{
+  .nav_list {
     width: 100%;
     display: flex;
     flex-wrap: nowrap;
@@ -91,12 +85,12 @@ const tabs = [
     overflow-x: auto;
   }
 
-  .nav_item .active{
+  .nav_item .active {
     color: var(--main-font-color);
     border-bottom: 1px solid var(--accent-bg-color);
   }
 
-  .nav_link{
+  .nav_link {
     position: relative;
     padding: 16px 40px;
     text-wrap: nowrap;
@@ -107,14 +101,17 @@ const tabs = [
     font-size: var(--font-size-xs);
     font-weight: 400;
     transition: all .2s;
+    background: none;
+    border: none;
+    cursor: pointer;
   }
 
-  .nav_link:hover{
+  .nav_link:hover {
     color: var(--main-font-color);
     transition: all .2s;
   }
 
-  .nav_link:hover::after{
+  .nav_link:hover::after {
     content: "";
     position: absolute;
     bottom: 0;
@@ -124,27 +121,217 @@ const tabs = [
   }
 
   @keyframes nav_border {
-    0%{
-      width: 0;
-    }
-    100%{
-      width: 100%;
+    0% { width: 0; }
+    100% { width: 100%; }
+  }
+
+  .preview{
+  width: 100%;
+
+  &_btns{
+    display: flex;
+    justify-content: right;
+    align-items: center;
+    gap: 8px;
+    margin-top: 8px;
+  }
+
+  &_btn{
+    padding: 12px 16px;
+    border-radius: var(--border-radius-m);
+    font-size: var(--font-size-xxs);
+    color: var(--main-font-color);
+    border: 1px solid var(--main-border-color);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+
+    &.update{
+      background-color: var(--accent-bg-color);
+      border: 1px solid var(--accent-bg-color);
     }
   }
+  
+  &_inner{
+    width: 100%;
+    margin-inline: auto;
+  }
+
+  &_header{
+    position: sticky;
+    top: 16px;
+    left: 0;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0 16px 0 24px;
+    margin-top: 16px;
+    border-radius: var(--border-radius-m);
+    background-color: var(--sub-bg-color);
+    border: 1px solid var(--main-border-color);
+    z-index: 999;
+
+    &_title-wrapper{
+      display: flex;
+      align-items: center;
+      gap: 16px;
+
+      .follow-btn{
+        padding: 8px 16px;
+        border-radius: var(--border-radius-m);
+        font-size: var(--font-size-xxs);
+        color: var(--main-font-color);
+        border: 1px solid var(--main-border-color);
+        background-color: var(--accent-bg-color);
+        border: 1px solid var(--accent-bg-color);
+        font-weight: 500;
+      }
+    }
+    
+    &_title{
+      font-size: var(--font-size-m);
+      font-weight: var(--font-weight-bold);
+      color: var(--main-font-color);
+    }
+
+    &_nav{
+      position: relative;
+      overflow: hidden;
+
+      &_btn{
+        position: absolute;
+        right: 0;
+        height: 100%;
+        padding: 0 8px;
+        background-color: var(--sub-bg-color);
+        border-left: 1px solid var(--main-border-color);
+        z-index: 10;
+      }
+
+      &_list{
+        width: 100%;
+        display: flex;
+        flex-wrap: nowrap;
+        gap: 8px;
+        align-items: center;
+        overflow-x: auto;
+      }
+
+      &_item{
+        >.active{
+          color: var(--main-font-color);
+          border-bottom: 1px solid var(--accent-bg-color);
+        }
+      }
+
+      &_link{
+        position: relative;
+        padding: 16px 24px;
+        text-wrap: nowrap;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: var(--sub-font-color);
+        font-size: var(--font-size-xs);
+        font-weight: 400;
+        transition: all .2s;
+
+        &:hover{
+          color: var(--main-font-color);
+          transition: all .2s;
+
+          &::after{
+            content: "";
+            position: absolute;
+            bottom: 0;
+            height: 1px;
+            background-color: var(--accent-bg-color);
+            animation: nav_border .2s forwards;
+
+            @keyframes nav_border {
+              0%{
+                width: 0;
+              }
+              100%{
+                width: 100%;
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
 </style>
 
 <script>
-  // 横スクロール用のボタン機能
+  // Astroで<script>タグに`client:load`属性をつけることで、hydrationを制御できる
   document.addEventListener('DOMContentLoaded', function() {
     const navBtn = document.querySelector('.nav_btn');
     const navList = document.querySelector('.nav_list');
-    
+
     if (navBtn && navList) {
       navBtn.addEventListener('click', function() {
-        // スクロール量を計算（現在の表示幅の半分ずつスクロール）
         const scrollAmount = navList.clientWidth / 2;
         navList.scrollBy({ left: scrollAmount, behavior: 'smooth' });
       });
     }
+    
+    // タブをクリックしたときのイベント処理
+    document.querySelectorAll('.nav_link').forEach(tabLink => {
+      tabLink.addEventListener('click', function(e) {
+        const tabId = this.getAttribute('data-tab-id');
+        if (!tabId) return;
+        
+        // URLのクエリパラメータを更新（URL表示のみで実際のリロードは発生しない）
+        const url = new URL(window.location.href);
+        url.searchParams.set('tab', tabId);
+        
+        // History APIを使用してURLを更新（ページはリロードしない）
+        window.history.pushState({ tab: tabId }, '', url);
+        
+        // コンテンツの切り替えを即時実行
+        switchContent(tabId);
+      });
+    });
+    
+    // ブラウザの戻る/進むボタンでもタブ切り替えが機能するようにする
+    window.addEventListener('popstate', function(event) {
+      const url = new URL(window.location.href);
+      const tabId = url.searchParams.get('tab') || 'summary';
+      switchContent(tabId);
+    });
+    
+    // コンテンツ切り替え関数
+    function switchContent(tabId) {
+      // パフォーマンス計測開始（開発用）
+      console.time('tabSwitch');
+      
+      // 1. アクティブなタブスタイルを更新
+      document.querySelectorAll('.nav_link').forEach(link => {
+        if (link.getAttribute('data-tab-id') === tabId) {
+          link.classList.add('active');
+        } else {
+          link.classList.remove('active');
+        }
+      });
+      
+      // 2. 全てのタブコンテンツを非表示にする（高速化のためdisplayプロパティを直接操作）
+      document.querySelectorAll('.tab-content').forEach(content => {
+        if (content.getAttribute('data-tab-id') === tabId) {
+          content.style.display = 'block';
+        } else {
+          content.style.display = 'none';
+        }
+      });
+      
+      // パフォーマンス計測終了
+      console.timeEnd('tabSwitch');
+    }
+    
+    // ページ初期表示時のタブ切り替え
+    const url = new URL(window.location.href);
+    const initialTabId = url.searchParams.get('tab') || 'summary';
+    switchContent(initialTabId);
   });
-</script> 
+</script>
