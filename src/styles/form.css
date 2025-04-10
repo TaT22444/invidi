@@ -1,4 +1,6 @@
 .form {
+  padding-top: 0;
+  border-top: none;
   padding: 16px;
 }
 
@@ -443,14 +445,6 @@
   color: var(--main-font-color);
   background-color: var(--accent-bg-color);
   border: 1px solid var(--accent-bg-color);
-}
-
-.contents {
-  width: calc(100% - 32px);
-  margin-top: 40px;
-  margin-inline: 16px;
-  padding-top: 40px;
-  border-top: 1px solid var(--main-border-color);
 }
 
 .info_number_wrapper {

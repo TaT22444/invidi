@@ -1,5 +1,6 @@
 .preview{
-  width: 100%;
+  width: calc(100% - 32px);
+  margin-inline: 16px;
 
   &_btns{
     display: flex;

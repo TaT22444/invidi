@@ -1,8 +1,11 @@
 ---
+import { initializeFirebaseAdmin } from '../../lib/firebase-admin';
+import type { CollectionReference } from 'firebase-admin/firestore';
+
 export interface Props {
   project: any;
   projectId: string | undefined;
-  activeTab?: 'summary' | 'profile' | 'cms' | 'form' | 'analytics' | 'preview';
+  activeTab?: string;
 }
 
 const { projectId = '', activeTab = 'summary', project } = Astro.props;
@@ -10,15 +13,35 @@ const { projectId = '', activeTab = 'summary', project } = Astro.props;
 // projectIdがundefinedの場合に備えてデフォルト値を設定
 const safeProjectId = projectId || '';
 
-// タブの定義
-const tabs = [
+// コレクションのラベルとタブ表示名のマッピング
+interface CollectionLabels {
+  [key: string]: string;
+}
+
+const collectionLabels: CollectionLabels = {
+  blog: 'ブログ',
+  notice: 'お知らせ',
+  contact: 'お問い合わせ'
+};
+
+// プロジェクトのコレクション情報を取得
+const { db } = await initializeFirebaseAdmin();
+const projectRef = db.collection('projects').doc(safeProjectId);
+const collections = await projectRef.listCollections();
+
+// コレクション名を取得してタブを生成
+const collectionTabs = collections.map((col: CollectionReference) => ({
+  id: col.id,
+  label: collectionLabels[col.id] || col.id
+}));
+
+// 常に表示する固定タブを追加
+const fixedTabs = [
   { id: 'summary', label: 'サマリー' },
-  { id: 'profile', label: 'プロフィール' },
-  { id: 'cms', label: 'CMS' },
-  { id: 'form', label: 'フォーム' },
-  { id: 'analytics', label: 'アナリティクス' },
-  { id: 'preview', label: 'プレビュー' }
 ];
+
+// 固定タブとコレクションタブを結合
+const allTabs = [...fixedTabs, ...collectionTabs];
 ---
 
 <header class="preview_header">
@@ -30,7 +53,7 @@ const tabs = [
   </div>
   <nav class="preview_header_nav">
     <ul class="preview_header_nav_list">
-      {tabs.map(tab => (
+      {allTabs.map(tab => (
         <li class="nav_item">
           <button
             type="button"

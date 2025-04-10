@@ -1,0 +1,13 @@
+/* プロジェクトバッジを表示 */
+.project-badge {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  width: 24px;
+  height: 24px;
+  background-color: var(--accent-bg-color);
+  border-radius: var(--border-radius-s);
+  color: white;
+  font-size: var(--font-size-xs);
+  font-weight: 500;
+}

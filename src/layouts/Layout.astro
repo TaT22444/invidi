@@ -3,6 +3,7 @@
 export const prerender = false;
 import Chart from 'chart.js/auto';
 import TokenRefresher from '../components/TokenRefresher.jsx';
+import '../styles/layout.scss';
 
 interface Props {
   title: string;
@@ -92,6 +93,31 @@ import '../styles/global.scss';
     <link href="https://fonts.googleapis.com/css2?family=Dela+Gothic+One&display=swap" rel="stylesheet">
 		<link href="https://cdn.jsdelivr.net/npm/destyle.css@1.0.15/destyle.css" rel="stylesheet"/>
 		<title>Indivi</title>
+		<!-- ページ読み込み時のチラつき防止用スタイル -->
+		<style is:inline>
+			/* 状態を保持するためのフラッシュ防止スタイル */
+			html.nav-init-collapsed .aside {
+				visibility: hidden;
+			}
+			
+			/* トランジション抑制（初期読み込み時のみ） */
+			html.nav-init-collapsed * {
+				transition: none !important;
+			}
+		</style>
+		<!-- ページ読み込み直後のナビゲーション状態設定スクリプト -->
+		<script is:inline>
+			(function() {
+				const isCollapsed = localStorage.getItem('nav-collapsed') === 'true';
+				if (isCollapsed) {
+					// 初期化中のマーカー
+					document.documentElement.classList.add('nav-init-collapsed');
+					
+					// 状態保持のためのクラスも設定
+					document.documentElement.classList.add('nav-collapsed');
+				}
+			})();
+		</script>
 	</head>
 	<body>
 		<aside class="aside" id="aside">
@@ -102,11 +128,11 @@ import '../styles/global.scss';
 							APP Title
 						</a>
 					</p>
-					<button class="header_icon">
+					<button class="header_icon" id="toggle-nav">
 						<svg width="20" height="20" viewBox="0 0 25 25" fill="none" xmlns="http://www.w3.org/2000/svg">
 							<path d="M9.41699 21.75V3.25" stroke="white" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
 							<path d="M15.75 3.25H9.25C5.93629 3.25 3.25 5.93629 3.25 9.25V15.75C3.25 19.0637 5.93629 21.75 9.25 21.75H15.75C19.0637 21.75 21.75 19.0637 21.75 15.75V9.25C21.75 5.93629 19.0637 3.25 15.75 3.25Z" stroke="white" stroke-width="1.5"/>
-						</svg>						
+						</svg>
 					</button>
 				</header>
 				<nav class="nav">
@@ -121,6 +147,7 @@ import '../styles/global.scss';
 								<p class="nav_name">トップ</p>							
 							</a>
 						</li>
+						<span class="span"></span>
 						<li class={`${isActive('/projects')}`}>
 							<button class="nav_link">
 								<svg width="16" height="16" viewBox="0 0 16 16" fill="none" 
@@ -177,19 +204,20 @@ import '../styles/global.scss';
 								)}
 							</ul>
 						</li>
-						<li class={`nav_item ${isActive('/plan')}`}>
-							<a href="/" class="nav_link">
+						<span class="span"></span>
+						<li class={`nav_item ${isActive(`/${userId}/plan`)}`}>
+							<a href={userId ? `/${userId}/plan` : "/plan"} class="nav_link">
 								<svg width="16" height="16" viewBox="0 0 16 17" fill="none" xmlns="http://www.w3.org/2000/svg">
 									<path d="M14 5.16634V4.74634C14 3.95101 14 3.55301 13.8947 3.23301C13.7988 2.93595 13.6358 2.66496 13.4183 2.44102C13.2009 2.21709 12.9348 2.04622 12.6407 1.94167C12.3287 1.83301 11.9427 1.83301 11.17 1.83301H4.83C4.05733 1.83301 3.67133 1.83301 3.35933 1.94167C3.06529 2.04616 2.79923 2.21692 2.58178 2.44073C2.36432 2.66454 2.2013 2.93541 2.10533 3.23234C2 3.55367 2 3.95101 2 4.74634V10.4997M14 7.83301V14.0823C14 14.6543 13.3433 14.9583 12.928 14.5783C12.8115 14.4707 12.6587 14.4109 12.5 14.4109C12.3413 14.4109 12.1885 14.4707 12.072 14.5783L11.75 14.873C11.5459 15.0618 11.278 15.1666 11 15.1666C10.722 15.1666 10.4541 15.0618 10.25 14.873C10.0459 14.6842 9.77804 14.5794 9.5 14.5794C9.22196 14.5794 8.95414 14.6842 8.75 14.873C8.54586 15.0618 8.27804 15.1666 8 15.1666C7.72196 15.1666 7.45414 15.0618 7.25 14.873C7.04586 14.6842 6.77804 14.5794 6.5 14.5794C6.22196 14.5794 5.95414 14.6842 5.75 14.873C5.54586 15.0618 5.27804 15.1666 5 15.1666C4.72196 15.1666 4.45414 15.0618 4.25 14.873L3.928 14.5783C3.81148 14.4707 3.65865 14.4109 3.5 14.4109C3.34135 14.4109 3.18852 14.4707 3.072 14.5783C2.65667 14.9583 2 14.6543 2 14.0823V13.1663" stroke="white" stroke-linecap="round"/>
 									<path d="M6.33301 7.43301L7.28567 8.49967L9.66634 5.83301" stroke="white" stroke-linecap="round" stroke-linejoin="round"/>
 									<path d="M5 10.833H6M11 10.833H8" stroke="white" stroke-linecap="round"/>
 								</svg>									
 								<p class="nav_name">プラン</p>			
-
 							</a>
 						</li>
-						<li class={`nav_item ${isActive('/docs')}`}>
-							<a href="/" class="nav_link">
+						<span class="span"></span>
+						<li class={`nav_item ${isActive(`/${userId}/documents`)}`}>
+							<a href={userId ? `/${userId}/documents` : "/documents"} class="nav_link">
 								<svg width="16" height="16" viewBox="0 0 16 17" fill="none" xmlns="http://www.w3.org/2000/svg">
 									<path d="M11.17 1.83301H4.83C4.05733 1.83301 3.67133 1.83301 3.35933 1.94167C3.06529 2.04616 2.79923 2.21692 2.58178 2.44073C2.36432 2.66454 2.2013 2.93541 2.10533 3.23234C2 3.55367 2 3.95101 2 4.74634V14.0823C2 14.6543 2.65667 14.9583 3.072 14.5783C3.18852 14.4707 3.34135 14.4109 3.5 14.4109C3.65865 14.4109 3.81148 14.4707 3.928 14.5783L4.25 14.873C4.45414 15.0618 4.72196 15.1666 5 15.1666C5.27804 15.1666 5.54586 15.0618 5.75 14.873C5.95414 14.6842 6.22196 14.5794 6.5 14.5794C6.77804 14.5794 7.04586 14.6842 7.25 14.873C7.45414 15.0618 7.72196 15.1666 8 15.1666C8.27804 15.1666 8.54586 15.0618 8.75 14.873C8.95414 14.6842 9.22196 14.5794 9.5 14.5794C9.77804 14.5794 10.0459 14.6842 10.25 14.873C10.4541 15.0618 10.722 15.1666 11 15.1666C11.278 15.1666 11.5459 15.0618 11.75 14.873L12.072 14.5783C12.1885 14.4707 12.3413 14.4109 12.5 14.4109C12.6587 14.4109 12.8115 14.4707 12.928 14.5783C13.3433 14.9583 14 14.6543 14 14.0823V4.74634C14 3.95101 14 3.55301 13.8947 3.23301C13.7988 2.93595 13.6358 2.66496 13.4183 2.44102C13.2009 2.21709 12.9348 2.04622 12.6407 1.94167C12.3287 1.83301 11.9427 1.83301 11.17 1.83301Z" stroke="white"/>
 									<path d="M7.00033 7.83333H11.3337M4.66699 7.83333H5.00033M4.66699 5.5H5.00033M4.66699 10.1667H5.00033M7.00033 5.5H11.3337M7.00033 10.1667H11.3337" stroke="white" stroke-linecap="round"/>
@@ -200,7 +228,7 @@ import '../styles/global.scss';
 					</ul>
 				</nav>
         <div class="account">
-          <a href={accountName === "ログイン" ? "/login" : "/account"} class="account_btn" id="account_btn">
+          <a href={userId ? `/${userId}/account` : "/account"} class={`account_btn ${isActive(`/${userId}/account`)}`} id="account_btn">
             <div class="account_icon"></div>
             <p class="account_name" id="account_name">{accountName}</p>
           </a>
@@ -273,6 +301,197 @@ import '../styles/global.scss';
 				}
 			});
 		</script>
+		<script>
+			document.addEventListener('DOMContentLoaded', function() {
+				const toggleBtn = document.getElementById('toggle-nav');
+				const aside = document.getElementById('aside');
+				const main = document.getElementById('main');
+
+				// ナビゲーションの状態をローカルストレージから復元
+				const isCollapsed = localStorage.getItem('nav-collapsed') === 'true';
+				
+				if (isCollapsed) {
+					// 見えない状態でDOMに縮小スタイルを適用
+					aside?.classList.add('collapsed');
+					main?.classList.add('expanded');
+					toggleBtn?.classList.add('rotated');
+					
+					// レンダリングの次のフレームで表示を戻す（チラつき防止）
+					requestAnimationFrame(() => {
+						requestAnimationFrame(() => {
+							// 初期化完了、asideを表示
+							document.documentElement.classList.remove('nav-init-collapsed');
+						});
+					});
+				}
+
+				// 既存のトグルボタンのイベントリスナー
+				toggleBtn?.addEventListener('click', function() {
+					// アニメーション付きでトグル
+					aside?.classList.toggle('collapsed');
+					main?.classList.toggle('expanded');
+					this.classList.toggle('rotated');
+
+					// 状態を保存
+					const isNowCollapsed = aside?.classList.contains('collapsed');
+					localStorage.setItem('nav-collapsed', isNowCollapsed ? 'true' : 'false');
+					
+					// HTML全体にクラスを設定（状態保持のため）
+					if (isNowCollapsed) {
+						document.documentElement.classList.add('nav-collapsed');
+					} else {
+						document.documentElement.classList.remove('nav-collapsed');
+					}
+
+					// プレビューモード時は状態を保持しない
+					const url = new URL(window.location.href);
+					const currentTab = url.searchParams.get('tab');
+					if (currentTab === 'preview') {
+						localStorage.removeItem('nav-collapsed');
+						document.documentElement.classList.remove('nav-collapsed');
+					}
+				});
+
+				// 既存のtabChangeイベントリスナー
+			});
+			
+			// ページ遷移の直前に状態を保存（より正確な状態保持）
+			window.addEventListener('beforeunload', function() {
+				const aside = document.getElementById('aside');
+				if (aside) {
+					const isCollapsed = aside.classList.contains('collapsed');
+					// 最後の状態を一時ストレージに保存
+					sessionStorage.setItem('nav-last-state', isCollapsed ? 'collapsed' : 'expanded');
+				}
+			});
+			
+			// ページ遷移後すぐに実行
+			window.addEventListener('load', function() {
+				// 一時ストレージから最後の状態を確認
+				const lastState = sessionStorage.getItem('nav-last-state');
+				if (lastState === 'collapsed') {
+					// asideがロード完了したか確認
+					const aside = document.getElementById('aside');
+					if (aside && !aside.classList.contains('collapsed')) {
+						// 状態が一致しない場合は強制的に更新
+						aside.classList.add('collapsed');
+						const main = document.getElementById('main');
+						if (main) main.classList.add('expanded');
+						const toggleBtn = document.getElementById('toggle-nav');
+						if (toggleBtn) toggleBtn.classList.add('rotated');
+					}
+				}
+				
+				// 一時ストレージをクリア
+				sessionStorage.removeItem('nav-last-state');
+				
+				// トランジション抑制を解除
+				setTimeout(() => {
+					document.documentElement.classList.remove('nav-init-collapsed');
+				}, 50);
+			});
+		</script>
+		<script>
+			document.addEventListener('DOMContentLoaded', function() {
+				const toggleBtn = document.getElementById('toggle-nav');
+				const aside = document.getElementById('aside');
+				const main = document.getElementById('main');
+
+				// プロジェクトリストの処理
+				const projectButton = document.querySelector('button.nav_link');
+				const projectListContainer = document.querySelector('.nav_nst_list');
+				
+				// プロジェクトアイテムに頭文字バッジを追加する関数
+				function addProjectBadges() {
+					const projectItems = projectListContainer?.querySelectorAll('.nav_nst_item');
+					if (!projectItems?.length) return;
+					
+					projectItems.forEach(item => {
+						const nameElement = item.querySelector('.nav_nst_name');
+						if (!nameElement) return;
+						
+						const projectName = nameElement.textContent || '';
+						const initial = projectName.charAt(0) || '?';
+						
+						// 既存のバッジがなければ作成
+						if (!item.querySelector('.project-badge')) {
+							const badge = document.createElement('div');
+							badge.className = 'project-badge';
+							badge.textContent = initial;
+							
+							// リンク要素に挿入
+							const link = item.querySelector('.nav_nst_link');
+							if (link) {
+								link.insertBefore(badge, link.firstChild);
+							}
+						}
+					});
+				}
+				
+				// 初期実行 - ページ読み込み時にバッジを追加
+				addProjectBadges();
+				
+				if (projectButton && aside) {
+					// クラス追加
+					projectButton.classList.add('project-button');
+					
+					// 縮小時のイベント処理
+					function handleProjectList() {
+						const isCollapsed = aside?.classList.contains('collapsed');
+						
+						if (isCollapsed) {
+							// 縮小表示時はホバーイベントを設定
+							projectButton.addEventListener('mouseenter', showProjectList);
+							projectListContainer?.addEventListener('mouseleave', hideProjectList);
+							projectListContainer?.addEventListener('mouseenter', keepProjectList);
+						} else {
+							// 拡大表示時はイベントを削除
+							projectButton.removeEventListener('mouseenter', showProjectList);
+							projectListContainer?.removeEventListener('mouseleave', hideProjectList);
+							projectListContainer?.removeEventListener('mouseenter', keepProjectList);
+							
+							// 展開時のリスト表示はデフォルトに戻す
+							if (projectListContainer) {
+								projectListContainer.style.display = '';
+							}
+						}
+					}
+					
+					// プロジェクトリストを表示
+					function showProjectList() {
+						if (!aside?.classList.contains('collapsed')) return;
+						
+						if (projectListContainer) {
+							projectListContainer.style.display = 'flex';
+						}
+					}
+					
+					// プロジェクトリストを維持
+					function keepProjectList(e: Event) {
+						if (e.currentTarget instanceof HTMLElement) {
+							e.currentTarget.style.display = 'flex';
+						}
+					}
+					
+					// プロジェクトリストを非表示
+					function hideProjectList(e: Event) {
+						if (e.currentTarget instanceof HTMLElement) {
+							e.currentTarget.style.display = 'none';
+						}
+					}
+					
+					// 初期設定
+					handleProjectList();
+					
+					// 状態変化を監視
+					const observer = new MutationObserver(function() {
+						handleProjectList();
+					});
+					
+					observer.observe(aside, { attributes: true });
+				}
+			});
+		</script>
 	</body>
 </html>
 
@@ -285,6 +504,124 @@ import '../styles/global.scss';
 		min-width: 264px;
 		height: 100dvh;
 		overflow: hidden;
+		transition: all 0.3s ease;
+
+		&.collapsed {
+			min-width: 72px;
+
+			.aside_inner {
+				width: 56px;
+			}
+
+			.title {
+				display: none;
+			}
+
+			.nav {
+				&_label {
+					display: none;
+				}
+
+				&_name {
+					display: none;
+				}
+
+				&_item {
+					display: flex;
+					justify-content: center;
+					position: relative; /* 子要素の位置決めのため */
+				}
+
+				&_link {
+					width: 40px;
+					height: 40px;
+					padding: 0;
+					display: flex;
+					justify-content: center;
+					align-items: center;
+
+					/* プロジェクトの下向き矢印SVGを非表示 */
+					svg:last-child {
+						display: none;
+					}
+				}
+
+				&_list {
+					gap: 16px; /* 縮小時は16pxに拡大 */
+				}
+
+				&_nst {
+					&_list {
+						position: absolute;
+						left: 64px;
+						top: -8px;
+						width: 240px;
+						background-color: var(--sub-bg-color);
+						border: 1px solid var(--main-border-color);
+						border-radius: var(--border-radius-m);
+						padding: 12px;
+						z-index: 100;
+						display: none;
+						flex-direction: column;
+						gap: 8px;
+						box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+					}
+
+					&_item {
+						margin-bottom: 0;
+						border-radius: var(--border-radius-s);
+						overflow: hidden;
+						transition: all 0.2s ease;
+
+						&:hover {
+							background-color: var(--item-bg-color);
+						}
+					}
+
+					&_link {
+						display: flex;
+						align-items: center;
+						padding: 8px 12px;
+						color: var(--main-font-color);
+						font-size: var(--font-size-xs);
+						text-decoration: none;
+					}
+
+					&_name {
+						margin-left: 8px;
+					}
+				}
+
+			}
+
+			/* プロジェクトバッジを表示 */
+			.project-badge {
+				display: flex;
+				justify-content: center;
+				align-items: center;
+				padding: 4px;
+				background-color: var(--accent-bg-color);
+				border-radius: var(--border-radius-s);
+				color: white;
+				font-size: var(--font-size-xs);
+				font-weight: 500;
+			}
+
+			.span {
+				display: none;
+			}
+
+			.account {
+				&_name {
+					display: none;
+				}
+				
+				&_btn {
+					justify-content: center;
+					padding: 8px 0;
+				}
+			}
+		}
 
 		&_inner{
 			position: relative;
@@ -295,6 +632,7 @@ import '../styles/global.scss';
 			background-color: var(--sub-bg-color);
 			border: 1px solid var(--main-border-color);
 			border-radius: var(--border-radius-m);
+			transition: all 0.3s ease;
 		}
 	}
 
@@ -320,6 +658,12 @@ import '../styles/global.scss';
 			background-color: var(--btn-bg-color);
 			border: 1px solid var(--main-border-color);
 			border-radius: var(--border-radius-s);
+			cursor: pointer;
+			transition: transform 0.3s ease;
+
+			&.rotated {
+				transform: rotate(180deg);
+			}
 		}
 	}
 
@@ -337,7 +681,8 @@ import '../styles/global.scss';
 			display: flex;
 			flex-direction: column;
 			justify-content: center;
-			gap: 4px;
+			gap: 8px; /* 通常時は8px */
+			transition: gap 0.3s ease; /* ギャップの変更にもトランジションを適用 */
 
 			>.active{
 				background-color: var(--elem-bg-color);
@@ -345,6 +690,7 @@ import '../styles/global.scss';
 		}
 
 		&_item{
+			width: 100%;
 			border-radius: var(--border-radius-s);
 
 			&:hover{
@@ -400,7 +746,7 @@ import '../styles/global.scss';
 		  	display: flex;
 		  	align-items: center;
 		  	justify-content: space-between;
-		  	padding: 12px;
+		  	padding: 8px 12px;
 		  	color: var(--sub-font-color);
 		  	font-size: var(--font-size-xs);
 		  	font-weight: 400;
@@ -414,6 +760,10 @@ import '../styles/global.scss';
 		left: 0;
 		width: calc(100% - 16px);
 		margin-inline: 8px;
+
+		.active{
+			background-color: var(--elem-bg-color);
+		}
 
 		&_btn{
 			width: 100%;
@@ -446,45 +796,46 @@ import '../styles/global.scss';
 
 	.main{
 		position: relative;
-		// left: 264px;
-		// transform: translateX(264px);
 		width: calc(100% - 264px);
 		max-width: 1400px;
 		margin-left: auto;
 		padding: 8px 16px 0 8px;
+		transition: all 0.3s ease;
+
+		&.expanded {
+			width: calc(100% - 72px);
+		}
 	}
 
 	.space{
 		width: 100%;
 		height: 80px;
 	}
+
+	/* ページ読み込み時のちらつき防止用グローバルスタイル */
+	:root.nav-collapsed {
+		.aside {
+			min-width: 72px;
+		}
+		
+		.main {
+			width: calc(100% - 72px) !important;
+		}
+	}
+
+	.span {
+		display: none; /* デフォルトは非表示 */
+		height: 1px;
+		margin-inline: auto;
+		background-color: var(--main-border-color);
+		transition: all 0.3s ease;
+	}
+
+	/* 縮小時のみspanを表示 */
+	.aside.collapsed .span {
+		display: block;
+		width: 24px;
+		margin-inline: auto;
+	}
 </style>
 
-<!-- <script client:load type="module">
-	const firebaseConfig = {
-		apiKey: import.meta.env.PUBLIC_FIREBASE_API_KEY,
-		authDomain: import.meta.env.PUBLIC_FIREBASE_AUTH_DOMAIN,
-		projectId: import.meta.env.PUBLIC_FIREBASE_PROJECT_ID,
-		storageBucket: import.meta.env.PUBLIC_FIREBASE_STORAGE_BUCKET,
-		messagingSenderId: import.meta.env.PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
-		appId: import.meta.env.PUBLIC_FIREBASE_APP_ID,
-	};
-	// Firebase の初期化（すでに初期化済みの場合はスキップ）
-	if (!firebase.apps.length) {
-		firebase.initializeApp(firebaseConfig);
-	}
-	const auth = firebase.auth();
-	auth.onAuthStateChanged(user => {
-		const accountNameElem = document.getElementById("account_name");
-		const accountBtn = document.getElementById("account_btn");
-		if (user) {
-			// ユーザーがログインしていれば、displayName（なければ email）を表示し、リンク先を /account に変更
-			accountNameElem.textContent = user.displayName || user.email;
-			accountBtn.setAttribute("href", "/account");
-		} else {
-			// 未ログインの場合は「ログイン」と表示し、リンク先は /login のまま
-			accountNameElem.textContent = "ログイン";
-			accountBtn.setAttribute("href", "/login");
-		}
-	});
-</script> -->

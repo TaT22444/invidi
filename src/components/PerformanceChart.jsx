@@ -19,6 +19,7 @@ export default function PerformanceChart({
   showClick: initialShowClick = true,
   showCtr: initialShowCtr = true,
   timeUnit = 'day',           // 時間単位（'hour'または'day'）
+  period = '1w',              // 表示期間 - 追加
 }) {
   const chartRef = useRef(null);
   const [showDisplay, setShowDisplay] = useState(initialShowDisplay);
@@ -31,33 +32,95 @@ export default function PerformanceChart({
   const [chartClickData, setChartClickData] = useState(clickData);
   const [chartCtrData, setChartCtrData] = useState(ctrData);
   const [chartTimeUnit, setChartTimeUnit] = useState(timeUnit);
+  const [currentPeriod, setCurrentPeriod] = useState(period);
 
-  // コンポーネントがマウントされたら、準備完了メッセージを送信
+  // データの状態と処理を明確に分離
   useEffect(() => {
+    // コンポーネントがマウントされたら、準備完了メッセージを送信
+    if (chartRef.current) {
+      try {
+        // チャートインスタンスを外部からアクセスできるように設定
+        const chartCanvas = chartRef.current.canvas;
+        if (chartCanvas) {
+          chartCanvas.__chartInstance = chartRef.current;
+          chartCanvas.setAttribute('data-period', currentPeriod);
+          chartCanvas.setAttribute('data-component', 'PerformanceChart');
+          chartCanvas.id = 'performance-chart';
+          console.log('PerformanceChart: チャートインスタンスを公開しました');
+        }
+      } catch (error) {
+        console.error('PerformanceChart: チャートインスタンスの公開に失敗:', error);
+      }
+    }
+    
     // グローバルイベントリスナーでデータ更新を検知
     const handleUpdateChart = (e) => {
       const newData = e.detail;
       if (newData && newData.labels) {
+        console.log('PerformanceChart: updateChartDataイベント受信', newData);
+        
+        // 状態を更新
         setChartLabels(newData.labels);
         setChartDisplayData(newData.displayData);
         setChartClickData(newData.clickData);
         setChartCtrData(newData.ctrData);
+        
+        // 期間情報があれば更新
+        if (newData.period) {
+          setCurrentPeriod(newData.period);
+          
+          // チャートキャンバスの属性も更新
+          if (chartRef.current && chartRef.current.canvas) {
+            chartRef.current.canvas.setAttribute('data-period', newData.period);
+          }
+        }
+        
         // 時間単位も更新
         if (newData.timeUnit) {
           setChartTimeUnit(newData.timeUnit);
         }
+        
+        // 指標の合計値を計算して指標更新イベントを発火
+        const totalDisplay = newData.displayData.reduce((sum, val) => sum + val, 0);
+        const totalClick = newData.clickData.reduce((sum, val) => sum + val, 0);
+        const averageCtr = totalDisplay > 0 ? (totalClick / totalDisplay * 100).toFixed(1) : "0";
+        
+        // 指標更新イベントを発火
+        window.dispatchEvent(new CustomEvent('metricsDataUpdated', {
+          detail: {
+            totalDisplay,
+            totalClick,
+            averageCtr
+          }
+        }));
       }
     };
 
     // グローバルイベントリスナーでデータセットの表示/非表示を検知
     const handleToggleDataset = (e) => {
-      const { metric, visible } = e.detail;
-      if (metric === 'display') {
-        setShowDisplay(visible);
-      } else if (metric === 'click') {
-        setShowClick(visible);
-      } else if (metric === 'ctr') {
-        setShowCtr(visible);
+      if (!e.detail) return;
+      
+      const { metric, visible, updateData } = e.detail;
+      
+      // updateDataフラグがtrueの場合のみデータを更新する（デフォルトはfalse）
+      if (updateData === true) {
+        // ここでは何もしない（データ更新は別のリスナーで行う）
+        return;
+      }
+      
+      console.log(`PerformanceChart: toggleChartDataset イベント受信 - metric=${metric}, visible=${visible}`);
+      
+      // データセットの可視性のみを更新
+      switch (metric) {
+        case 'display':
+          setShowDisplay(visible);
+          break;
+        case 'click':
+          setShowClick(visible);
+          break;
+        case 'ctr':
+          setShowCtr(visible);
+          break;
       }
     };
 
@@ -65,21 +128,28 @@ export default function PerformanceChart({
     window.addEventListener('toggleChartDataset', handleToggleDataset);
 
     // カスタムイベントで初期化完了を通知
-    const readyEvent = new CustomEvent('chartReady');
-    window.dispatchEvent(readyEvent);
+    setTimeout(() => {
+      const readyEvent = new CustomEvent('chartReady');
+      window.dispatchEvent(readyEvent);
+      console.log('PerformanceChart: chartReadyイベント発火');
+    }, 100); // 少し遅延させて確実に発火
 
     return () => {
       window.removeEventListener('updateChartData', handleUpdateChart);
       window.removeEventListener('toggleChartDataset', handleToggleDataset);
     };
-  }, []);
+  }, [chartRef]);
 
   // チェックボックスの状態変更をハンドリングする関数を追加
   useEffect(() => {
     const handleCheckboxChange = (e) => {
-      const metric = e.target.dataset.metric;
-      const isChecked = e.target.checked;
-
+      const checkbox = e.target;
+      const metric = checkbox.getAttribute('data-metric');
+      const isChecked = checkbox.checked;
+      
+      console.log(`PerformanceChart: チェックボックス変更 - metric=${metric}, checked=${isChecked}`);
+      
+      // データセットの可視性のみを更新し、データは変更しない
       switch (metric) {
         case 'display':
           setShowDisplay(isChecked);
@@ -91,21 +161,56 @@ export default function PerformanceChart({
           setShowCtr(isChecked);
           break;
       }
+      
+      // ダブルイベント発火を防止するために、ここではトグルイベントを発火しない
     };
 
     // チェックボックスのイベントリスナーを設定
     const checkboxes = document.querySelectorAll('.metric-checkbox');
     checkboxes.forEach(checkbox => {
+      checkbox.removeEventListener('change', handleCheckboxChange);
       checkbox.addEventListener('change', handleCheckboxChange);
     });
+
+    // トグルチャートデータセットイベントのリスナー
+    const handleToggleDataset = (e) => {
+      if (!e.detail) return;
+      
+      const { metric, visible } = e.detail;
+      console.log(`PerformanceChart: toggleChartDataset イベント受信 - metric=${metric}, visible=${visible}`);
+      
+      // データセットの可視性のみを更新
+      switch (metric) {
+        case 'display':
+          setShowDisplay(visible);
+          break;
+        case 'click':
+          setShowClick(visible);
+          break;
+        case 'ctr':
+          setShowCtr(visible);
+          break;
+      }
+    };
+    
+    window.addEventListener('toggleChartDataset', handleToggleDataset);
 
     // クリーンアップ関数
     return () => {
       checkboxes.forEach(checkbox => {
         checkbox.removeEventListener('change', handleCheckboxChange);
       });
+      window.removeEventListener('toggleChartDataset', handleToggleDataset);
     };
   }, []);
+
+  // useEffectの依存配列を修正（chartData関連）
+  useEffect(() => {
+    if (chartRef.current && chartRef.current.chart) {
+      // チャートを更新
+      chartRef.current.chart.update();
+    }
+  }, [chartDisplayData, chartClickData, chartCtrData, showDisplay, showClick, showCtr]);
 
   // データセットの可視性を制御
   const datasets = [
@@ -155,56 +260,121 @@ export default function PerformanceChart({
   // データの長さに基づいてX軸の目盛り数を計算
   const calculateMaxTicksLimit = (length) => {
     if (length <= 7) return 7; // 1週間以内は全て表示
-    if (length <= 31) return 8; // 1ヶ月は8点くらい
+    if (length <= 31) return 10; // 1ヶ月は10点くらい
     if (length <= 90) return 12; // 3ヶ月は12点くらい
-    if (length <= 180) return 12; // 6ヶ月は12点くらい
-    return 12; // 1年は12点（月ごと）
+    return 12; // その他
   };
 
-  // 時間単位に基づいてX軸の表示設定を調整
+  // 時間単位と期間に基づいてX軸の表示設定を調整
   const getXAxisConfig = () => {
     // データの長さを取得
     const dataLength = chartLabels.length;
     
-    // 24時間モードの場合
-    if (chartTimeUnit === 'hour') {
-      return {
-        display: true,
-        grid: {
-          display: false,
-        },
-        ticks: {
-          color: '#808080',
-          maxTicksLimit: 4, // 時間表示の場合は4つ程度表示
-          callback: function(value, index, values) {
-            // 時間表示の場合はより詳細な表示
-            return chartLabels[index];
-          }
-        },
-        border: {
-          display: false,
-        },
-      };
+    // 期間によって表示を調整
+    switch (currentPeriod) {
+      case '1d':
+        return {
+          display: true,
+          grid: {
+            display: true,
+            color: '#32323C22',  // MyLineChartと同じ薄い色に
+          },
+          ticks: {
+            color: '#808080',
+            maxTicksLimit: 8, // 24時間表示の場合は8つ程度表示
+            font: {
+              size: 10
+            }
+          },
+          border: {
+            display: true,
+            color: '#32323C',    // MyLineChartと同じボーダー色に
+          },
+        };
+      case '1w':
+        return {
+          display: true,
+          grid: {
+            display: true,
+            color: '#32323C22',  // MyLineChartと同じ薄い色に
+          },
+          ticks: {
+            color: '#808080',
+            maxTicksLimit: 7, // 1週間は全日表示
+            font: {
+              size: 10
+            }
+          },
+          border: {
+            display: true,
+            color: '#32323C',    // MyLineChartと同じボーダー色に
+          },
+        };
+      case '1m':
+        return {
+          display: true,
+          grid: {
+            display: true,
+            color: '#32323C22',  // MyLineChartと同じ薄い色に
+          },
+          ticks: {
+            color: '#808080',
+            autoSkip: true,
+            autoSkipPadding: 15,
+            maxTicksLimit: 10, // 1ヶ月は約10点表示
+            font: {
+              size: 10
+            }
+          },
+          border: {
+            display: true,
+            color: '#32323C',    // MyLineChartと同じボーダー色に
+          },
+        };
+      case '3m':
+        return {
+          display: true,
+          grid: {
+            display: true,
+            color: '#32323C22',  // MyLineChartと同じ薄い色に
+          },
+          ticks: {
+            color: '#808080',
+            autoSkip: true,
+            autoSkipPadding: 20,
+            maxTicksLimit: 12, // 3ヶ月は12点程度
+            font: {
+              size: 10
+            }
+          },
+          border: {
+            display: true,
+            color: '#32323C',    // MyLineChartと同じボーダー色に
+          },
+        };
+      default:
+        // デフォルト設定
+        return {
+          display: true,
+          grid: {
+            display: true,
+            color: '#32323C22',  // MyLineChartと同じ薄い色に
+          },
+          ticks: {
+            color: '#808080',
+            maxTicksLimit: calculateMaxTicksLimit(dataLength), // データ量に応じて調整
+            font: {
+              size: 10
+            },
+            autoSkip: true,
+            autoSkipPadding: 15
+          },
+          border: {
+            display: true,
+            color: '#32323C',    // MyLineChartと同じボーダー色に
+          },
+        };
     }
-    
-    // 日単位以上の場合のデフォルト設定
-    return {
-      display: true,
-      grid: {
-        display: false,
-      },
-      ticks: {
-        color: '#808080',
-        maxTicksLimit: calculateMaxTicksLimit(dataLength), // データ量に応じて調整
-        callback: function(value, index, values) {
-          // 特定の間隔でのみラベルを表示
-          return chartLabels[index];
-        }
-      },
-      border: {
-        display: false,
-      },
-    };
   };
 
   // Chart.js用のオプション設定
@@ -220,19 +390,22 @@ export default function PerformanceChart({
         suggestedMax: maxY,
         position: 'left',
         title: {
-          display: false, // タイトルは表示しない
+          display: false,
         },
         ticks: {
+          display: false, // 左側の目盛りラベルは非表示のまま
           color: '#808080',
           padding: 10,
           // 最小限の目盛りだけ表示
           maxTicksLimit: 5,
         },
         grid: {
-          color: '#32323C55', // グリッド線を薄く表示
+          color: '#32323C22', // MyLineChartと同じ薄い色に
+          drawBorder: false,
         },
         border: {
-          display: false,
+          display: true,
+          color: '#32323C', // MyLineChartと同じボーダー色に
         },
       },
       // クリック数のY軸（別軸の場合）
@@ -264,6 +437,7 @@ export default function PerformanceChart({
           display: false,
         },
         ticks: {
+          display: true, // CTRの目盛りラベルを表示する
           color: '#808080',
           padding: 10,
           // 最小限の目盛りだけ表示
@@ -277,7 +451,8 @@ export default function PerformanceChart({
           drawOnChartArea: false, // グリッド線は表示しない
         },
         border: {
-          display: false,
+          display: true,
+          color: '#32323C', // MyLineChartと同じボーダー色に
         },
       }
     },
@@ -311,7 +486,7 @@ export default function PerformanceChart({
   };
 
   return (
-    <div style={{ width: '100%', height }}>
+    <div style={{ width: '100%', height, padding: '0 8px' }}>
       <Line ref={chartRef} data={chartData} options={options} />
     </div>
   );

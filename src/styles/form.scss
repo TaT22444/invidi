@@ -1,4 +1,6 @@
 .form{
+  padding-top: 0;
+  border-top: none;
   padding: 16px;
   
   &-header{
@@ -357,11 +359,11 @@
 }
 
 .contents{
-  width: calc(100% - 32px);
-  margin-top: 40px;
-  margin-inline: 16px;
-  padding-top: 40px;
-  border-top: 1px solid var(--main-border-color);
+  // width: calc(100% - 32px);
+  // margin-top: 40px;
+  // margin-inline: 16px;
+  // padding-top: 40px;
+  // border-top: 1px solid var(--main-border-color);
 }
 
 

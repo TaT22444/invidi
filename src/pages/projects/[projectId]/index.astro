@@ -122,6 +122,7 @@ const pageTitle = project.name || "プロジェクト概要";
 </Layout>
 
 <style lang="scss">
+
 .pan {
   margin-top: 8px;
 
@@ -149,12 +150,18 @@ const pageTitle = project.name || "プロジェクト概要";
   width: 100%;
 }
 
+.contents{
+  margin-top: 40px;
+}
+
 .box {
   width: 100%;
   background-color: var(--sub-bg-color);
   border: 1px solid var(--main-border-color);
   border-radius: var(--border-radius-m);
   margin-top: 8px;
+  margin-inline: auto;
+  width: 100%;
 
   &:first-of-type {
     margin-top: 16px;

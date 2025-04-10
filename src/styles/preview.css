@@ -1,6 +1,7 @@
 @charset "UTF-8";
 .preview {
-  width: 100%;
+  width: calc(100% - 32px);
+  margin-inline: 16px;
 }
 
 .preview_btns {

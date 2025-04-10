@@ -26,7 +26,7 @@ const averageCtr = totalDisplay > 0 ? `${(totalClick / totalDisplay * 100).toFix
         <span class="metric-indicator display-color"></span>
       </label>
       <span class="metric-label">表示回数:</span>
-      <span class="metric-value display-value">{totalDisplay}</span>
+      <span class="metric-value display-value" id="performance-display-value">{totalDisplay}</span>
     </div>
     <div class="metric">
       <label class="metric-toggle">
@@ -34,7 +34,7 @@ const averageCtr = totalDisplay > 0 ? `${(totalClick / totalDisplay * 100).toFix
         <span class="metric-indicator click-color"></span>
       </label>
       <span class="metric-label">クリック数:</span>
-      <span class="metric-value click-value">{totalClick}</span>
+      <span class="metric-value click-value" id="performance-click-value">{totalClick}</span>
     </div>
     <div class="metric">
       <label class="metric-toggle">
@@ -42,7 +42,7 @@ const averageCtr = totalDisplay > 0 ? `${(totalClick / totalDisplay * 100).toFix
         <span class="metric-indicator ctr-color"></span>
       </label>
       <span class="metric-label">CTR:</span>
-      <span class="metric-value ctr-value">{averageCtr}</span>
+      <span class="metric-value ctr-value" id="performance-ctr-value">{averageCtr}</span>
     </div>
   </div>
 </div>
@@ -65,8 +65,92 @@ const averageCtr = totalDisplay > 0 ? `${(totalClick / totalDisplay * 100).toFix
     showDisplay={true}
     showClick={true}
     showCtr={true}
+    period={period}
   />
-</div> 
+</div>
+
+<script>
+// PerformanceMetricsのクライアントサイドスクリプト
+document.addEventListener('DOMContentLoaded', function() {
+  // チェックボックスの初期状態を設定
+  const checkboxes = document.querySelectorAll('.metric-checkbox');
+  
+  checkboxes.forEach(checkbox => {
+    // チェックボックスの変更イベントを処理
+    checkbox.addEventListener('change', function() {
+      /** @type {HTMLInputElement} */
+      const checkbox = this;
+      const metric = checkbox.getAttribute('data-metric');
+      const isChecked = checkbox.checked;
+      
+      console.log(`PerformanceMetrics: チェックボックス変更 - metric=${metric}, checked=${isChecked}`);
+      
+      // 対応する指標値の表示/非表示を切り替え
+      const metricParent = checkbox.closest('.metric');
+      if (metricParent) {
+        const metricValue = metricParent.querySelector(`.${metric}-value`);
+        if (metricValue instanceof HTMLElement) {
+          metricValue.style.opacity = isChecked ? '1' : '0.3';
+        }
+      }
+      
+      // グラフのデータセット表示/非表示を切り替えるイベントを発火
+      // ここでは単一のイベントのみを発火し、明示的にupdateData=falseを設定
+      window.dispatchEvent(new CustomEvent('toggleChartDataset', {
+        detail: { 
+          metric: metric, 
+          visible: isChecked,
+          updateData: false,
+          source: 'checkbox' // ソースを明示
+        }
+      }));
+    });
+  });
+  
+  // periodChangeイベントをリッスン
+  document.addEventListener('periodChange', function(e) {
+    if (e instanceof CustomEvent && e.detail) {
+      const { period, tabId } = e.detail;
+      
+      // アクティブなタブが検索パフォーマンスの場合のみ処理
+      if (tabId === 'search-performance') {
+        console.log(`PerformanceMetrics: 期間変更イベントを検出 - 期間: ${period}`);
+        
+        // 更新されたデータを受け取った後に指標値を更新するイベントをリッスン
+        window.addEventListener('metricsDataUpdated', function updateMetricValues(event) {
+          if (event instanceof CustomEvent && event.detail) {
+            // 指標値を更新
+            const { totalDisplay, totalClick, averageCtr } = event.detail;
+            
+            const displayValueElement = document.getElementById('performance-display-value');
+            const clickValueElement = document.getElementById('performance-click-value');
+            const ctrValueElement = document.getElementById('performance-ctr-value');
+            
+            if (displayValueElement) displayValueElement.textContent = totalDisplay.toString();
+            if (clickValueElement) clickValueElement.textContent = totalClick.toString();
+            if (ctrValueElement) ctrValueElement.textContent = `${averageCtr}%`;
+            
+            // チェックボックスの状態に応じてスタイルを更新
+            checkboxes.forEach(checkbox => {
+              const metric = checkbox.getAttribute('data-metric');
+              const isChecked = checkbox.checked;
+              
+              // 対応する指標値のスタイルを更新
+              const metricValue = document.querySelector(`.${metric}-value`);
+              if (metricValue) {
+                metricValue.style.opacity = isChecked ? '1' : '0.3';
+              }
+            });
+            
+            // このイベントハンドラーは一度だけ実行
+            window.removeEventListener('metricsDataUpdated', updateMetricValues);
+          }
+        });
+      }
+    }
+  });
+});
+</script>
 
 <style lang="scss">
   .box{
@@ -176,9 +260,11 @@ const averageCtr = totalDisplay > 0 ? `${(totalClick / totalDisplay * 100).toFix
     position: relative;
   }
 
-  /* チェックボックスがオフの時のスタイル */
-  .metric-checkbox:not(:checked) ~ .metric-value {
+  /* チェックボックスがオフの時のスタイルを強化 */
+  .metric-checkbox:not(:checked) ~ .metric-value,
+  .metric-checkbox:not(:checked) + .metric-indicator + .metric-label + .metric-value {
     opacity: 0.3;
+    transition: opacity 0.2s ease;
   }
 
   .page-metrics {

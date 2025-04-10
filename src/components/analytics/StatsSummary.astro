@@ -5,6 +5,7 @@ interface Props {
   ctr: number;
   title?: string;
   description?: string;
+  id?: string;
 }
 
 const { 
@@ -12,11 +13,12 @@ const {
   clickCount, 
   ctr, 
   title = "検索パフォーマンス", 
-  description = "サイト内の表示回数、クリック数、CTRを表示します" 
+  description = "サイト内の表示回数、クリック数、CTRを表示します",
+  id = "stats-summary" 
 } = Astro.props;
 ---
 
-<div class="tab_box">
+<div class="tab_box" id={id}>
   <h2 class="tab_box_title">{title}</h2>
   <p class="tab_box_desc">{description}</p>
   <div class="tab_box_cards">
@@ -177,3 +179,46 @@ margin-top: 16px;
 }
 }
 </style>
+
+<script>
+// サマリー値の保護 - 値を記憶しておき、外部から変更されても元に戻す
+document.addEventListener('DOMContentLoaded', function() {
+  // 初期値を保存
+  const displayElement = document.querySelector('.tab_box_card:nth-child(1) .tab_box_card_value');
+  const clickElement = document.querySelector('.tab_box_card:nth-child(2) .tab_box_card_value');
+  const ctrElement = document.querySelector('.tab_box_card:nth-child(3) .tab_box_card_value');
+  
+  const originalValues = {
+    display: displayElement ? displayElement.textContent : '',
+    click: clickElement ? clickElement.textContent : '',
+    ctr: ctrElement ? ctrElement.textContent : ''
+  };
+  
+  // MutationObserverを使って値の変更を監視
+  const observer = new MutationObserver((mutations) => {
+    mutations.forEach((mutation) => {
+      if (mutation.type === 'characterData' || mutation.type === 'childList') {
+        // 変更があった場合は元の値に戻す
+        if (displayElement && displayElement.textContent !== originalValues.display) {
+          displayElement.textContent = originalValues.display;
+        }
+        if (clickElement && clickElement.textContent !== originalValues.click) {
+          clickElement.textContent = originalValues.click;
+        }
+        if (ctrElement && ctrElement.textContent !== originalValues.ctr) {
+          ctrElement.textContent = originalValues.ctr;
+        }
+      }
+    });
+  });
+  
+  // 監視設定
+  const config = { childList: true, characterData: true, subtree: true };
+  
+  // サマリーカードを監視
+  const summaryCards = document.querySelectorAll('.tab_box_card');
+  summaryCards.forEach(card => {
+    observer.observe(card, config);
+  });
+});
+</script>

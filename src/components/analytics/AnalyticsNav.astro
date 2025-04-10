@@ -4,51 +4,143 @@ interface Props {
   activeTab?: string;
 }
 
-const { projectId, activeTab = "search-performance" } = Astro.props;
+// デフォルト値を設定しない！
+const { projectId, activeTab } = Astro.props;
 ---
 
 <nav class="tabs">
   <ul class="tabs_list">
     <li class="tabs_item">
-      <button class={`tabs_btn ${activeTab === 'search-performance' ? 'active' : ''}`} data-tab="search-performance">検索パフォーマンス</button>
+      <button class="tabs_btn" data-tab="search-performance">検索パフォーマンス</button>
     </li>
     <li class="tabs_item">
-      <button class={`tabs_btn ${activeTab === 'users' ? 'active' : ''}`} data-tab="users">ユーザー</button>
+      <button class="tabs_btn" data-tab="users">ユーザー</button>
     </li>
     <li class="tabs_item">
-      <button class={`tabs_btn ${activeTab === 'blog' ? 'active' : ''}`} data-tab="blog">ブログ</button>
+      <button class="tabs_btn" data-tab="blog">ブログ</button>
     </li>
     <li class="tabs_item">
-      <button class={`tabs_btn ${activeTab === 'search-ranking' ? 'active' : ''}`} data-tab="search-ranking">検索ランキング</button>
+      <button class="tabs_btn" data-tab="search-ranking">検索ランキング</button>
     </li>
   </ul>
 </nav> 
 
-
 <style lang="scss">
-  .tabs{
-
-&_list{
-  display: flex;
-  gap: 8px;
-  align-items: center;
-}
-&_item{
-}
-&_btn{
-  padding: 12px 16px;
-  border-radius: var(--border-radius-s);
-  font-size: var(--font-size-xxs);
-  font-weight: 400;
-  color: var(--sub-font-color);
+.tabs {
+  &_list {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+  }
   
-  &.active{
-    background-color: var(--btn-bg-color);
-    border: 1px solid var(--main-border-color);
-    color: var(--main-font-color);
+  &_item {
+  }
+  
+  &_btn {
+    padding: 12px 16px;
+    border-radius: var(--border-radius-s);
+    font-size: var(--font-size-xxs);
+    font-weight: 400;
+    color: var(--sub-font-color);
+    background: none;
+    border: none;
+    cursor: pointer;
+    
+    &.active {
+      background-color: var(--btn-bg-color);
+      border: 1px solid var(--main-border-color);
+      color: var(--main-font-color);
+    }
   }
 }
-}
 </style>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  // タブをクリックしたときのイベント処理
+  const tabButtons = document.querySelectorAll('.tabs_btn');
+  
+  tabButtons.forEach(button => {
+    button.addEventListener('click', function() {
+      // パフォーマンス計測開始（開発用）
+      console.time('analyticsTabSwitch');
+      
+      const tabId = this.getAttribute('data-tab');
+      if (!tabId) return;
+      
+      console.log(`アナリティクスタブ切り替え: ${tabId}`);
+      
+      // 1. アクティブなタブスタイルを更新
+      tabButtons.forEach(btn => {
+        if (btn.getAttribute('data-tab') === tabId) {
+          btn.classList.add('active');
+        } else {
+          btn.classList.remove('active');
+        }
+      });
+      
+      // 2. コンテンツの表示/非表示を切り替え
+      const tabContents = document.querySelectorAll('.container > .tab-switch');
+      tabContents.forEach(content => {
+        if (content instanceof HTMLElement) {
+          if (content.id === tabId) {
+            content.style.display = 'block';
+            content.classList.add('active');
+          } else {
+            content.style.display = 'none';
+            content.classList.remove('active');
+          }
+        }
+      });
+      
+      // 3. 内部状態として保存のみ行い、URLは変更しない
+      sessionStorage.setItem('analytics-current-tab', tabId);
+      
+      // 4. 現在選択中の期間を取得
+      const activePeriod = document.querySelector('.tab_option.active');
+      const periodId = activePeriod ? activePeriod.getAttribute('data-period') : '1w';
+      sessionStorage.setItem('analytics-current-period', periodId);
+      
+      // 5. 期間変更イベントを発火して該当タブのデータを更新
+      document.dispatchEvent(new CustomEvent('periodChange', {
+        detail: {
+          period: periodId,
+          tabId: tabId,
+          source: 'analytics-tab-click'
+        },
+        bubbles: true
+      }));
+      
+      // パフォーマンス計測終了
+      console.timeEnd('analyticsTabSwitch');
+    });
+  });
+  
+  // 初期表示時のタブ設定
+  function initAnalyticsTabs() {
+    try {
+      // セッションストレージから保存されたタブ情報を取得
+      const savedTab = sessionStorage.getItem('analytics-current-tab') || 'search-performance';
+      
+      // 対応するタブボタンを見つけてクリック
+      const tabButton = document.querySelector(`.tabs_btn[data-tab="${savedTab}"]`);
+      if (tabButton instanceof HTMLElement) {
+        tabButton.click();
+      } else {
+        // デフォルトタブ（検索パフォーマンス）
+        const defaultTab = document.querySelector('.tabs_btn[data-tab="search-performance"]');
+        if (defaultTab instanceof HTMLElement) {
+          defaultTab.click();
+        }
+      }
+    } catch (error) {
+      console.error('Failed to initialize analytics tabs:', error);
+    }
+  }
+  
+  // 少し遅延させて初期化（他のコンポーネントのロード完了を待つ）
+  setTimeout(initAnalyticsTabs, 200);
+});
+</script>
 
 <!-- <script src="../../scripts/analytics-client.ts"></script> -->

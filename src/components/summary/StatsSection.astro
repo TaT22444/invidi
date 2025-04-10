@@ -195,15 +195,13 @@ console.log(`StatsSection[${id}] データ:`, { parsedLabels, parsedDataPoints }
 </script>
 
 <style lang="scss">
-  .contents {
-    margin-top: 40px;
-
-    &::first-of-type{
-      margin-top: 16px;
+    .contents{
+      width: calc(100% - 32px);
+      margin-inline: 16px;
+      margin-top: 40px;
       padding-top: 0;
       border-top: none;
     }
-  }
 
   .wrapper {
     display: flex;

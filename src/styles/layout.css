@@ -1,0 +1,21 @@
+@charset "UTF-8";
+/* プロジェクトバッジを表示 */
+.project-badge {
+  display: -webkit-box;
+  display: -ms-flexbox;
+  display: flex;
+  -webkit-box-pack: center;
+      -ms-flex-pack: center;
+          justify-content: center;
+  -webkit-box-align: center;
+      -ms-flex-align: center;
+          align-items: center;
+  width: 24px;
+  height: 24px;
+  background-color: var(--accent-bg-color);
+  border-radius: var(--border-radius-s);
+  color: white;
+  font-size: var(--font-size-xs);
+  font-weight: 500;
+}
+/*# sourceMappingURL=layout.css.map */

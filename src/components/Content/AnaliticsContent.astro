@@ -99,150 +99,133 @@ const accountName = user.displayName || "ログイン";
 
 <section class="ana-box">
   <div class="inner">
-    <!-- ◆ 最適化: タブナビゲーションをコンポーネント化 -->
+    <!-- AnalyticsNavコンポーネント -->
     <AnalyticsNav projectId={projectId} activeTab="search-performance" />
     
-    <!-- ◆ 最適化: 統計サマリーをコンポーネント化 -->
+    <!-- StatsSummaryコンポーネント - データ属性を追加してJavaScriptから参照できるようにする -->
     <StatsSummary 
       displayCount={totalStats.displayCount} 
       clickCount={totalStats.clickCount} 
-      ctr={totalStats.ctr} 
+      ctr={totalStats.ctr}
+      id="search-performance-stats"
     />
     
-    <!-- ◆ 最適化: 期間選択UIをコンポーネント化 -->
+    <!-- データを隠し要素として保持 -->
+    <div class="hidden-data">
+      <span id="search-performance-display" data-value={totalStats.displayCount}></span>
+      <span id="search-performance-click" data-value={totalStats.clickCount}></span>
+      <span id="search-performance-ctr" data-value={totalStats.ctr}></span>
+      
+      <span id="users-display" data-value="135"></span>
+      <span id="users-click" data-value="42"></span>
+      <span id="users-ctr" data-value="31.1"></span>
+      
+      <span id="blog-display" data-value="87"></span>
+      <span id="blog-click" data-value="28"></span>
+      <span id="blog-ctr" data-value="32.2"></span>
+      
+      <span id="ranking-display" data-value="0"></span>
+      <span id="ranking-click" data-value="0"></span>
+      <span id="ranking-ctr" data-value="0"></span>
+    </div>
+    
     <PeriodSelector activePeriod="1w" />
   </div>
 </section>
 
-<!-- 各タブコンテンツエリア -->
-<!-- 検索パフォーマンスタブ -->
-<div class="container tab-switch active" id="search-performance">
-  <section class="contents">
-    <div class="section_title_wrapper">
-      <h3 class="section_title">サイト全体</h3>
-      <p class="section_period">{analyticsData.periodLabel}</p>
-    </div>
-    <div class="box">
-      <div class="inner">
-        <!-- ◆ 最適化: パフォーマンスメトリクスをコンポーネント化 -->
-        <PerformanceMetrics 
-          labels={analyticsData.chartData.labels}
-          displayData={analyticsData.chartData.displayData}
-          clickData={analyticsData.chartData.clickData}
-          ctrData={analyticsData.chartData.ctrData}
-          period="1w"
-        />
+<!-- 各タブコンテンツを「tab-switch」クラスで管理し、初期状態を設定 -->
+<div class="container">
+  <!-- 検索パフォーマンスタブ -->
+  <div class="tab-switch" id="search-performance" style="display: block;">
+    <section class="contents">
+      <div class="section_title_wrapper">
+        <h3 class="section_title">サイト全体</h3>
+        <p class="section_period">{analyticsData.periodLabel}</p>
       </div>
-    </div>
-  </section>
-  <section class="contents">
-    <div class="section_title_wrapper">
-      <h3 class="section_title">ページごと</h3>
-      <p class="section_period">{analyticsData.periodLabel}</p>
-    </div>
-    <div class="box">
-      <div class="inner">
-        <div class="page-metrics">
-          <table class="metrics-table">
-            <thead>
-              <tr>
-                <th class="path-column">ページ名 / パス</th>
-                <th class="metric-column">表示回数</th>
-                <th class="metric-column">クリック数</th>
-                <th class="metric-column">CTR</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr>
-                <td class="path-cell">
-                  トップページ / https://invidi.netlify.app/{project.id}
-                </td>
-                <td class="metric-cell">120</td>
-                <td class="metric-cell">12</td>
-                <td class="metric-cell">10%</td>
-              </tr>
-              <tr>
-                <td class="path-cell">
-                  プロフィールページ / https://invidi.netlify.app/{project.id}/profile
-                </td>
-                <td class="metric-cell">80</td>
-                <td class="metric-cell">8</td>
-                <td class="metric-cell">10%</td>
-              </tr>
-            </tbody>
-          </table>
+      <div class="box">
+        <div class="inner">
+          <PerformanceMetrics 
+            labels={analyticsData.chartData.labels}
+            displayData={analyticsData.chartData.displayData}
+            clickData={analyticsData.chartData.clickData}
+            ctrData={analyticsData.chartData.ctrData}
+            period="1w"
+          />
         </div>
       </div>
-    </div>
-  </section>
-</div>
+    </section>
+    <!-- 残りの検索パフォーマンスコンテンツ -->
+  </div>
 
-<!-- ユーザータブ -->
-<div class="container tab-switch" id="users">
-  <section class="contents">
-    <div class="section_title_wrapper">
-      <h3 class="section_title">ユーザー統計</h3>
-      <p class="section_period">{analyticsData.periodLabel}</p>
-    </div>
-    <div class="box">
-      <div class="inner">
-        <div class="wrapper">
-          <p class="graph_desc">ユニークユーザー数</p>
-          <p class="graph_value">135</p>
+  <!-- ユーザータブ - 初期状態は非表示 -->
+  <div class="tab-switch" id="users" style="display: none;">
+    <section class="contents">
+      <div class="section_title_wrapper">
+        <h3 class="section_title">ユーザー統計</h3>
+        <p class="section_period">{analyticsData.periodLabel}</p>
+      </div>
+      <div class="box">
+        <div class="inner">
+          <div class="wrapper">
+            <p class="graph_desc">ユニークユーザー数</p>
+            <p class="graph_value">135</p>
+          </div>
+          <MyLineChart
+            client:load
+            dataLabel="ユーザー数"
+            labels={analyticsData.chartData.labels}
+            dataPoints={analyticsData.chartData.displayData}
+            borderColor="#468FDD"
+            period={"1w"}
+          />
         </div>
-        <MyLineChart
-          client:load
-          dataLabel="ユーザー数"
-          labels={analyticsData.chartData.labels}
-          dataPoints={analyticsData.chartData.displayData}
-          borderColor="#468FDD"
-        />
       </div>
-    </div>
-  </section>
-</div>
+    </section>
+  </div>
 
-<!-- ブログタブ -->
-<div class="container tab-switch" id="blog">
-  <section class="contents">
-    <div class="section_title_wrapper">
-      <h3 class="section_title">ブログ統計</h3>
-      <p class="section_period">{analyticsData.periodLabel}</p>
-    </div>
-    <div class="box">
-      <div class="inner">
-        <div class="wrapper">
-          <p class="graph_desc">記事別アクセス数</p>
-          <p class="graph_value">87</p>
+  <!-- ブログタブ - 初期状態は非表示 -->
+  <div class="tab-switch" id="blog" style="display: none;">
+    <section class="contents">
+      <div class="section_title_wrapper">
+        <h3 class="section_title">ブログ統計</h3>
+        <p class="section_period">{analyticsData.periodLabel}</p>
+      </div>
+      <div class="box">
+        <div class="inner">
+          <div class="wrapper">
+            <p class="graph_desc">記事別アクセス数</p>
+            <p class="graph_value">87</p>
+          </div>
+          <MyLineChart
+            client:load
+            dataLabel="閲覧数"
+            labels={analyticsData.chartData.labels}
+            dataPoints={analyticsData.chartData.displayData}
+            borderColor="#468FDD"
+            period={"1w"}
+          />
         </div>
-        <MyLineChart
-          client:load
-          dataLabel="閲覧数"
-          labels={analyticsData.chartData.labels}
-          dataPoints={analyticsData.chartData.displayData}
-          borderColor="#468FDD"
-        />
       </div>
-    </div>
-  </section>
+    </section>
+  </div>
+
+  <!-- 検索ランキングタブ - 初期状態は非表示 -->
+  <div class="tab-switch" id="search-ranking" style="display: none;">
+    <section class="contents">
+      <div class="section_title_wrapper">
+        <h3 class="section_title">検索キーワードランキング</h3>
+        <p class="section_period">{analyticsData.periodLabel}</p>
+      </div>
+      <div class="box">
+        <div class="inner">
+          <p>まだデータがありません</p>
+        </div>
+      </div>
+    </section>
+  </div>
 </div>
 
-<!-- 検索ランキングタブ -->
-<div class="container tab-switch" id="search-ranking">
-  <section class="contents">
-    <div class="section_title_wrapper">
-      <h3 class="section_title">検索キーワードランキング</h3>
-      <p class="section_period">{analyticsData.periodLabel}</p>
-    </div>
-    <div class="box">
-      <div class="inner">
-        <p>まだデータがありません</p>
-      </div>
-    </div>
-  </section>
-</div>
-
-<style lang="scss" scoped>
+<style lang="scss">
   .pan{
     margin-top: 8px;
     
@@ -454,6 +437,7 @@ const accountName = user.displayName || "ログイン";
     border: 1px solid var(--main-border-color);
     border-radius: var(--border-radius-m);
     margin-top: 16px;
+    margin-inline: auto;
 
     &:first-of-type{
       margin-top: 16px;
@@ -486,7 +470,7 @@ const accountName = user.displayName || "ログイン";
 
   .contents{
     width: calc(100% - 32px);
-    margin-inline: 8px;
+    margin-inline: 16px;
     margin-top: 40px;
 
     .section_title_wrapper{
@@ -648,7 +632,470 @@ const accountName = user.displayName || "ログイン";
       background-color: var(--hover-bg-color);
     }
   }
-</style>
 
-<!-- 最適化: 外部JavaScriptファイルをインポート -->
-<script src="../../scripts/analytics-client.ts"></script>
+  /* 隠しデータ要素用のスタイルを追加 */
+  .hidden-data {
+    display: none;
+  }
+  
+  /* タブ切り替え用のスタイルを明確化 */
+  .tab-switch {
+    width: 100%;
+    margin-inline: auto;
+    transition: opacity 0.2s;
+  }
+
+  /* 追加: ローディングインジケーター用のスタイル */
+  .loading-indicator {
+    display: none;
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(255, 255, 255, 0.7);
+    z-index: 10;
+    justify-content: center;
+    align-items: center;
+  }
+  
+  .loading-spinner {
+    width: 40px;
+    height: 40px;
+    border: 4px solid var(--sub-border-color);
+    border-top: 4px solid var(--accent-bg-color);
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+  }
+  
+  @keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+  }
+  
+  /* コンテンツボックスの位置を相対指定にして、ローディングインジケーターの位置基準にする */
+  .box {
+    position: relative;
+  }
+
+  .contents{
+    padding-top: 0;
+    border-top: none;
+}
+</style>
+<!-- 既存のスクリプトを修正 -->
+<script>
+// 型定義を追加して型エラーを回避
+interface ChartData {
+  labels: string[];
+  displayData: number[];
+  clickData: number[];
+  ctrData: number[];
+}
+
+interface AnalyticsDataByPeriod {
+  [period: string]: {
+    chartData: ChartData;
+    periodLabel: string;
+  };
+}
+
+// サンプルのデータセット（実際のアプリでは、APIから取得するか、ページ読み込み時に全期間のデータをhiddenタグに格納しておく）
+const sampleDataByPeriod: AnalyticsDataByPeriod = {
+  '1d': {
+    chartData: {
+      labels: ['00時', '03時', '06時', '09時', '12時', '15時', '18時', '21時'],
+      displayData: [42, 28, 15, 38, 75, 98, 84, 62],
+      clickData: [8, 5, 2, 9, 18, 24, 19, 14],
+      ctrData: [19.0, 17.9, 13.3, 23.7, 24.0, 24.5, 22.6, 22.6]
+    },
+    periodLabel: '過去24時間'
+  },
+  '1w': {
+    chartData: {
+      labels: generateDateLabels(7),
+      displayData: [185, 195, 167, 210, 254, 268, 291],
+      clickData: [42, 38, 35, 45, 59, 72, 76],
+      ctrData: [22.7, 19.5, 21.0, 21.4, 23.2, 26.9, 26.1]
+    },
+    periodLabel: '過去1週間'
+  },
+  '1m': {
+    chartData: {
+      labels: generateDateLabels(30),
+      displayData: generateDailyData(30, 150, 350),
+      clickData: generateDailyData(30, 30, 80),
+      ctrData: generateCtrData(30, 18, 28)
+    },
+    periodLabel: '過去1ヶ月'
+  },
+  '3m': {
+    chartData: {
+      labels: generateDateLabels(90),
+      displayData: generateDailyData(90, 100, 450, 15),
+      clickData: generateDailyData(90, 25, 110, 15),
+      ctrData: generateCtrData(90, 15, 32)
+    },
+    periodLabel: '過去3ヶ月'
+  }
+};
+
+// 日付ラベルを生成する関数
+function generateDateLabels(days: number): string[] {
+  const result = [];
+  const today = new Date();
+  
+  for (let i = days - 1; i >= 0; i--) {
+    const date = new Date();
+    date.setDate(today.getDate() - i);
+    const month = date.getMonth() + 1;
+    const day = date.getDate();
+    result.push(`${month}/${day}`);
+  }
+  
+  return result;
+}
+
+// 日別データを生成する関数（トレンドを持つランダムデータ）
+function generateDailyData(days: number, min: number, max: number, trendFactor: number = 10): number[] {
+  const data = [];
+  let value = min + Math.floor(Math.random() * (max - min) / 3);
+  
+  // トレンドの方向（上昇・下降・横ばい）
+  let trend = Math.random() < 0.6 ? 1 : -1; // 60%の確率で上昇トレンド
+  let trendDuration = Math.floor(Math.random() * 7) + 3; // トレンドが続く期間
+  
+  for (let i = 0; i < days; i++) {
+    // トレンドの切り替え
+    if (trendDuration <= 0) {
+      trend = Math.random() < 0.5 ? 1 : -1;
+      trendDuration = Math.floor(Math.random() * 7) + 3;
+    }
+    
+    // 値にランダムな変動を加える（トレンドの方向に沿って）
+    const randomFactor = Math.random() * trendFactor;
+    const change = trend * randomFactor + (Math.random() - 0.5) * trendFactor;
+    value = Math.max(min, Math.min(max, value + change));
+    
+    // 週末効果：金土は少し高め
+    const dayOfWeek = (i % 7);
+    if (dayOfWeek === 5 || dayOfWeek === 6) {
+      value = Math.min(max, value * 1.05);
+    }
+    // 月曜は少し低め
+    else if (dayOfWeek === 0) {
+      value = Math.max(min, value * 0.95);
+    }
+    
+    data.push(Math.round(value));
+    trendDuration--;
+  }
+  
+  return data;
+}
+
+// CTRデータを生成する関数（より自然な変動を持たせる）
+function generateCtrData(days: number, min: number, max: number): number[] {
+  const data = [];
+  let value = min + (max - min) / 2;
+  
+  for (let i = 0; i < days; i++) {
+    // CTRは急激に変化しにくいので、小さな変動を加える
+    const change = (Math.random() - 0.5) * 2;
+    value = Math.max(min, Math.min(max, value + change));
+    
+    // 週末効果：週末は少しCTRが高い傾向
+    const dayOfWeek = (i % 7);
+    if (dayOfWeek === 5 || dayOfWeek === 6) {
+      value = Math.min(max, value + 0.5);
+    }
+    
+    // 小数点第1位までの値を保存
+    data.push(Math.round(value * 10) / 10);
+  }
+  
+  return data;
+}
+
+// グラフ更新ヘルパー関数
+function updateChart(chartId: string, newData: any) {
+  const chartElement = document.getElementById(chartId) as HTMLCanvasElement;
+  if (!chartElement) return;
+  
+  // Chart.jsインスタンスにアクセス
+  // @ts-ignore - Chart.jsの型定義を追加していないため
+  const chartInstance = chartElement.__chartInstance;
+  if (!chartInstance) return;
+  
+  // データを更新
+  chartInstance.data.labels = newData.labels;
+  chartInstance.data.datasets.forEach((dataset: any, index: number) => {
+    if (index === 0) {
+      dataset.data = newData.displayData;
+    } else if (index === 1) {
+      dataset.data = newData.clickData;
+    } else if (index === 2) {
+      dataset.data = newData.ctrData;
+    }
+  });
+  
+  // グラフを再描画
+  chartInstance.update();
+}
+
+// 期間ラベル更新
+function updatePeriodLabels(periodLabel: string) {
+  const periodLabelElements = document.querySelectorAll('.section_period');
+  periodLabelElements.forEach(element => {
+    element.textContent = periodLabel;
+  });
+}
+
+// ローディングインジケーター制御
+function showLoading(containerId: string) {
+  const container = document.getElementById(containerId);
+  if (!container) return;
+  
+  // 既存のローディングインジケーターがあれば削除
+  let loader = container.querySelector('.loading-indicator');
+  if (!loader) {
+    // なければ作成
+    loader = document.createElement('div');
+    loader.className = 'loading-indicator';
+    const spinner = document.createElement('div');
+    spinner.className = 'loading-spinner';
+    loader.appendChild(spinner);
+    container.appendChild(loader);
+  }
+  
+  // 表示
+  (loader as HTMLElement).style.display = 'flex';
+}
+
+function hideLoading(containerId: string) {
+  const container = document.getElementById(containerId);
+  if (!container) return;
+  
+  const loader = container.querySelector('.loading-indicator');
+  if (loader) {
+    (loader as HTMLElement).style.display = 'none';
+  }
+}
+
+document.addEventListener('periodChange', async function(e: Event) {
+  const customEvent = e as CustomEvent;
+  if (!customEvent.detail) return;
+  
+  const { period, tabId } = customEvent.detail;
+  console.log(`AnaliticsContent: 期間変更イベント - 期間: ${period}, タブ: ${tabId}`);
+  
+  // アクティブなタブのコンテナを特定
+  const activeContainer = document.getElementById(tabId);
+  if (!activeContainer) {
+    console.warn(`Active container with id ${tabId} not found`);
+    return;
+  }
+  
+  // ローディング表示
+  showLoading(tabId);
+  
+  try {
+    // 実際のアプリではここでAPIリクエストを行う
+    await new Promise(resolve => setTimeout(resolve, 500));
+    
+    // 期間に応じたデータを取得
+    const data = sampleDataByPeriod[period] || sampleDataByPeriod['1w'];
+    console.log(`AnaliticsContent: ${period}のデータを取得`, data);
+    
+    // 全てのコンテナ内のMyLineChartコンポーネントの属性を更新
+    const chartElements = document.querySelectorAll('[data-component="MyLineChart"]');
+    chartElements.forEach(element => {
+      if (element instanceof HTMLElement) {
+        element.setAttribute('data-period', period);
+      }
+    });
+    
+    // 全てのコンテナ内のPerformanceChartコンポーネントの属性を更新
+    const performanceChartElements = document.querySelectorAll('[data-component="PerformanceChart"]');
+    performanceChartElements.forEach(element => {
+      if (element instanceof HTMLElement) {
+        element.setAttribute('data-period', period);
+      }
+    });
+    
+    // 各チャートの更新処理
+    // Chart.jsベースの標準チャートを更新
+    const canvasElements = activeContainer.querySelectorAll('canvas');
+    canvasElements.forEach(canvas => {
+      // 各キャンバスIDでチャートを更新
+      if (canvas.id && !canvas.id.includes('hidden')) {
+        console.log(`AnaliticsContent: チャート${canvas.id}を更新`);
+        try {
+          updateChart(canvas.id, {...data.chartData, period});
+        } catch (updateError) {
+          console.warn(`Failed to update chart ${canvas.id}:`, updateError);
+        }
+      }
+    });
+    
+    // 期間ラベルを更新
+    updatePeriodLabels(data.periodLabel);
+    
+  } catch (error) {
+    console.error('データの更新に失敗しました:', error);
+  } finally {
+    // ローディング非表示
+    hideLoading(tabId);
+  }
+});
+
+// URLから期間パラメータを取得する関数
+function getCurrentPeriod() {
+  try {
+    const url = new URL(window.location.href);
+    return url.searchParams.get('period') || '1w';
+  } catch (e) {
+    return '1w';
+  }
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+  console.log('Analytics content initialized');
+  
+  // 初期化処理: URLからパラメータを読み取り、期間とタブを設定
+  function initFromUrl() {
+    try {
+      const url = new URL(window.location.href);
+      const periodParam = url.searchParams.get('period') || '1w';
+      const tabParam = url.searchParams.get('analytics-tab') || 'search-performance';
+      
+      console.log(`Initializing from URL - period: ${periodParam}, tab: ${tabParam}`);
+      
+      // タブを設定
+      const tabButton = document.querySelector(`.tabs_btn[data-tab="${tabParam}"]`) as HTMLElement;
+      if (tabButton && !tabButton.classList.contains('active')) {
+        tabButton.click();
+      } else {
+        // タブが既にアクティブな場合は、期間設定だけを適用
+        const periodButton = document.querySelector(`.tab_option[data-period="${periodParam}"]`) as HTMLElement;
+        if (periodButton && !periodButton.classList.contains('active')) {
+          periodButton.click();
+        } else if (periodButton && periodButton.classList.contains('active')) {
+          // 既にアクティブな場合でも、確実にイベントを発火して適切なデータを表示
+          const activeTab = document.querySelector('.tabs_btn.active');
+          const activeTabId = activeTab ? activeTab.getAttribute('data-tab') : 'search-performance';
+          
+          document.dispatchEvent(new CustomEvent('periodChange', {
+            detail: {
+              period: periodParam,
+              tabId: activeTabId
+            },
+            bubbles: true
+          }));
+        }
+      }
+    } catch (error) {
+      console.error('Failed to initialize from URL:', error);
+    }
+  }
+  
+  // 少し遅延させて初期化（React/Astroコンポーネントのロード完了を待つ）
+  setTimeout(() => {
+    initFromUrl();
+  }, 300);
+  
+  // タブ切り替え後、選択中の期間情報を保持するためのリスナーを追加
+  window.addEventListener('popstate', function(event) {
+    if (event.state) {
+      try {
+        const { analyticsTab, period } = event.state;
+        
+        // タブ更新
+        if (analyticsTab) {
+          const tabButton = document.querySelector(`.tabs_btn[data-tab="${analyticsTab}"]`) as HTMLElement;
+          if (tabButton) tabButton.click();
+        }
+        
+        // 期間更新
+        if (period) {
+          const periodButton = document.querySelector(`.tab_option[data-period="${period}"]`) as HTMLElement;
+          if (periodButton) periodButton.click();
+        }
+      } catch (e) {
+        console.error('Failed to handle popstate:', e);
+      }
+    }
+  });
+
+  // メインページ内のタブ（サマリー、プロフィールなど）の切り替え処理
+  const mainTabButtons = document.querySelectorAll('.main-tab-button'); // メインのタブボタン
+  if (mainTabButtons.length > 0) {
+    mainTabButtons.forEach(tab => {
+      tab.addEventListener('click', function() {
+        const tabId = this instanceof HTMLElement ? this.getAttribute('data-tab') : null;
+        if (!tabId) return;
+        
+        console.log(`メインタブがクリックされました: ${tabId}`);
+        
+        // アクティブ状態を更新
+        mainTabButtons.forEach(t => t.classList.remove('active'));
+        this.classList.add('active');
+        
+        // コンテンツ表示を切り替え
+        const tabContents = document.querySelectorAll('.main-tab-content');
+        tabContents.forEach(content => {
+          if (content instanceof HTMLElement) {
+            if (content.id === tabId) {
+              content.style.display = 'block';
+            } else {
+              content.style.display = 'none';
+            }
+          }
+        });
+        
+        // URLを更新 - 単純にtabパラメータのみを使用
+        const url = new URL(window.location.href);
+        
+        // 他のパラメータを全て削除
+        url.searchParams.forEach((value, key) => {
+          if (key !== 'tab') {
+            url.searchParams.delete(key);
+          }
+        });
+        
+        // タブパラメータを設定
+        url.searchParams.set('tab', tabId);
+        
+        // 履歴更新
+        window.history.pushState({ mainTab: tabId }, '', url.toString());
+      });
+    });
+  }
+
+  // URLからの初期化
+  function initFromUrl() {
+    try {
+      const url = new URL(window.location.href);
+      const tabParam = url.searchParams.get('tab') || 'summary';
+      
+      // メインタブの初期化
+      const mainTabButton = document.querySelector(`.main-tab-button[data-tab="${tabParam}"]`);
+      if (mainTabButton instanceof HTMLElement) {
+        mainTabButton.click();
+      } else {
+        // デフォルトのサマリータブを表示
+        const defaultTab = document.querySelector(`.main-tab-button[data-tab="summary"]`);
+        if (defaultTab instanceof HTMLElement) {
+          defaultTab.click();
+        }
+      }
+    } catch (error) {
+      console.error('Failed to initialize from URL:', error);
+    }
+  }
+  
+  // 遅延初期化
+  setTimeout(initFromUrl, 100);
+});
+</script>
+

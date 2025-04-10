@@ -1,68 +1,121 @@
 ---
 interface Props {
-  activePeriod?: string;
+  activePeriod: string;
 }
 
-const { activePeriod = "1w" } = Astro.props;
+const { activePeriod = '1w' } = Astro.props;
 
 const periods = [
-  { id: "24h", label: "24時間" },
-  { id: "1w", label: "過去1週間" },
-  { id: "1m", label: "過去1ヶ月" },
-  { id: "3m", label: "過去3ヶ月" },
-  { id: "6m", label: "過去6ヶ月" },
-  { id: "1y", label: "過去12ヶ月" }
+  { id: '1d', label: '過去24時間' },
+  { id: '1w', label: '過去1週間' },
+  { id: '1m', label: '過去1ヶ月' },
+  { id: '3m', label: '過去3ヶ月' },
 ];
 ---
 
 <div class="tab_options">
   {periods.map(period => (
     <button 
-      class={`tab_option ${period.id === activePeriod ? 'active' : ''}`} 
+      class={`tab_option ${activePeriod === period.id ? 'active' : ''}`}
       data-period={period.id}
     >
       {period.label}
     </button>
   ))}
-  <button class="tab_option_add">
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <path d="M18 12.998H13V17.998C13 18.2633 12.8946 18.5176 12.7071 18.7052C12.5196 18.8927 12.2652 18.998 12 18.998C11.7348 18.998 11.4804 18.8927 11.2929 18.7052C11.1054 18.5176 11 18.2633 11 17.998V12.998H6C5.73478 12.998 5.48043 12.8927 5.29289 12.7052C5.10536 12.5176 5 12.2633 5 11.998C5 11.7328 5.10536 11.4785 5.29289 11.2909C5.48043 11.1034 5.73478 10.998 6 10.998H11V5.99805C11 5.73283 11.1054 5.47848 11.2929 5.29094C11.4804 5.1034 11.7348 4.99805 12 4.99805C12.2652 4.99805 12.5196 5.1034 12.7071 5.29094C12.8946 5.47848 13 5.73283 13 5.99805V10.998H18C18.2652 10.998 18.5196 11.1034 18.7071 11.2909C18.8946 11.4785 19 11.7328 19 11.998C19 12.2633 18.8946 12.5176 18.7071 12.7052C18.5196 12.8927 18.2652 12.998 18 12.998Z" fill="white"/>
-    </svg>
-    <p class="tab_option_add_label">期間を増やす</p>
-  </button>
-</div> 
+</div>
 
 <style lang="scss">
-  .tab_options{
+  .tab_options {
     margin-top: 24px;
     display: flex;
     align-items: center;
     gap: 8px; 
   }
-  .tab_option{
+  
+  .tab_option {
     padding: 8px 12px;
     border-radius: var(--border-radius-m);
     font-size: var(--font-size-xxs);
     color: var(--sub-font-color);
-
-    &.active{
+    background: none;
+    border: none;
+    cursor: pointer;
+    
+    &.active {
       color: var(--main-font-color);
       background-color: var(--btn-bg-color);
       border: 1px solid var(--main-border-color);
     }
+  }
+</style>
 
-    &_add{
-      display: flex;
-      align-items: center;
-      gap: 4px;
-      padding: 8px 12px;
-      border-radius: var(--border-radius-m);
-      font-size: var(--font-size-xxs);
+<script>
+// TypeScriptエラーを回避するための型定義
+interface HTMLElementWithPeriod extends HTMLElement {
+  getAttribute(name: string): string | null;
+  classList: DOMTokenList;
+}
 
-      &_label{
-        font-size: var(--font-size-xxs);
-        color: var(--main-font-color);
+document.addEventListener('DOMContentLoaded', function() {
+  const periodButtons = document.querySelectorAll('.tab_option[data-period]');
+  
+  periodButtons.forEach(button => {
+    button.addEventListener('click', function() {
+      const periodId = this instanceof HTMLElement ? this.getAttribute('data-period') : null;
+      if (!periodId) return;
+      
+      console.log(`期間変更: ${periodId}`);
+      
+      // アクティブなスタイルを更新
+      periodButtons.forEach(btn => {
+        if (btn.getAttribute('data-period') === periodId) {
+          btn.classList.add('active');
+        } else {
+          btn.classList.remove('active');
+        }
+      });
+      
+      // 現在アクティブなアナリティクスタブを特定
+      const activeAnalyticsTab = document.querySelector('.tabs_btn.active');
+      const activeTabId = activeAnalyticsTab ? activeAnalyticsTab.getAttribute('data-tab') : 'search-performance';
+      
+      // セッションストレージに保存のみ行い、URLは変更しない
+      sessionStorage.setItem('analytics-current-period', periodId);
+      sessionStorage.setItem('analytics-current-tab', activeTabId);
+      
+      // カスタムイベントを発火して期間変更を通知
+      const periodChangeEvent = new CustomEvent('periodChange', {
+        detail: {
+          period: periodId,
+          tabId: activeTabId,
+          source: 'period-selector-click'
+        },
+        bubbles: true
+      });
+      
+      document.dispatchEvent(periodChangeEvent);
+    });
+  });
+  
+  // 初期表示時の期間設定
+  function initPeriod() {
+    // セッションストレージから保存された期間情報を取得
+    const savedPeriod = sessionStorage.getItem('analytics-current-period') || '1w';
+    
+    // 対応する期間ボタンを見つけてクリック
+    const periodButton = document.querySelector(`.tab_option[data-period="${savedPeriod}"]`);
+    if (periodButton instanceof HTMLElement) {
+      periodButton.click();
+    } else {
+      // デフォルト期間（1週間）
+      const defaultPeriod = document.querySelector('.tab_option[data-period="1w"]');
+      if (defaultPeriod instanceof HTMLElement) {
+        defaultPeriod.click();
       }
     }
   }
-</style>
+  
+  // 少し遅延させて初期化
+  setTimeout(initPeriod, 300);
+});
+</script>

@@ -265,10 +265,11 @@ const tabs = [
 </style>
 
 <script>
-  // Astroで<script>タグに`client:load`属性をつけることで、hydrationを制御できる
   document.addEventListener('DOMContentLoaded', function() {
     const navBtn = document.querySelector('.nav_btn');
     const navList = document.querySelector('.nav_list');
+    const aside = document.getElementById('aside');
+    const main = document.getElementById('main');
 
     if (navBtn && navList) {
       navBtn.addEventListener('click', function() {
@@ -280,17 +281,32 @@ const tabs = [
     // タブをクリックしたときのイベント処理
     document.querySelectorAll('.nav_link').forEach(tabLink => {
       tabLink.addEventListener('click', function(e) {
-        const tabId = this.getAttribute('data-tab-id');
+        const tabId = this instanceof HTMLElement ? this.getAttribute('data-tab-id') : null;
         if (!tabId) return;
         
-        // URLのクエリパラメータを更新（URL表示のみで実際のリロードは発生しない）
+        // URLのクエリパラメータを更新
         const url = new URL(window.location.href);
         url.searchParams.set('tab', tabId);
-        
-        // History APIを使用してURLを更新（ページはリロードしない）
         window.history.pushState({ tab: tabId }, '', url);
         
-        // コンテンツの切り替えを即時実行
+        // プレビュー表示の場合はasideを非表示に
+        if (aside && main) {
+          if (tabId === 'preview') {
+            aside.style.display = 'none';
+            main.style.width = '100%';
+            main.style.maxWidth = 'none';
+            main.style.marginLeft = '0';
+            main.style.padding = '0';
+          } else {
+            aside.style.display = '';
+            main.style.width = 'calc(100% - 264px)';
+            main.style.maxWidth = '1400px';
+            main.style.marginLeft = 'auto';
+            main.style.padding = '8px 16px 0 8px';
+          }
+        }
+        
+        // コンテンツの切り替えを実行
         switchContent(tabId);
       });
     });
@@ -299,29 +315,51 @@ const tabs = [
     window.addEventListener('popstate', function(event) {
       const url = new URL(window.location.href);
       const tabId = url.searchParams.get('tab') || 'summary';
+      
+      // プレビュー表示の状態を復元
+      if (aside && main) {
+        if (tabId === 'preview') {
+          aside.style.display = 'none';
+          main.style.width = '100%';
+          main.style.maxWidth = 'none';
+          main.style.marginLeft = '0';
+          main.style.padding = '0';
+        } else {
+          aside.style.display = '';
+          main.style.width = 'calc(100% - 264px)';
+          main.style.maxWidth = '1400px';
+          main.style.marginLeft = 'auto';
+          main.style.padding = '8px 16px 0 8px';
+        }
+      }
+      
       switchContent(tabId);
     });
     
     // コンテンツ切り替え関数
-    function switchContent(tabId) {
-      // パフォーマンス計測開始（開発用）
+    function switchContent(tabId: string) {
+      // パフォーマンス計測開始
       console.time('tabSwitch');
       
       // 1. アクティブなタブスタイルを更新
       document.querySelectorAll('.nav_link').forEach(link => {
-        if (link.getAttribute('data-tab-id') === tabId) {
-          link.classList.add('active');
-        } else {
-          link.classList.remove('active');
+        if (link instanceof HTMLElement) {
+          if (link.getAttribute('data-tab-id') === tabId) {
+            link.classList.add('active');
+          } else {
+            link.classList.remove('active');
+          }
         }
       });
       
-      // 2. 全てのタブコンテンツを非表示にする（高速化のためdisplayプロパティを直接操作）
+      // 2. コンテンツの表示/非表示を切り替え
       document.querySelectorAll('.tab-content').forEach(content => {
-        if (content.getAttribute('data-tab-id') === tabId) {
-          content.style.display = 'block';
-        } else {
-          content.style.display = 'none';
+        if (content instanceof HTMLElement) {
+          if (content.getAttribute('data-tab-id') === tabId) {
+            content.style.display = 'block';
+          } else {
+            content.style.display = 'none';
+          }
         }
       });
       
@@ -332,6 +370,16 @@ const tabs = [
     // ページ初期表示時のタブ切り替え
     const url = new URL(window.location.href);
     const initialTabId = url.searchParams.get('tab') || 'summary';
+    
+    // 初期表示時もプレビュー状態を設定
+    if (aside && main && initialTabId === 'preview') {
+      aside.style.display = 'none';
+      main.style.width = '100%';
+      main.style.maxWidth = 'none';
+      main.style.marginLeft = '0';
+      main.style.padding = '0';
+    }
+    
     switchContent(initialTabId);
   });
 </script>

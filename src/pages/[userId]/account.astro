@@ -1,0 +1,172 @@
+---
+export const prerender = false;
+
+import Layout from "../../layouts/Layout.astro";
+import PlanInfo from "../../components/dashboard/PlanInfo.astro";
+import ProjectsList from "../../components/dashboard/ProjectsList.astro";
+import DeleteModal from "../../components/dashboard/DeleteModal.astro";
+import CreateProjectModal from "../../components/dashboard/CreateProjectModal.astro";
+
+// Firebase認証とサービスのインポート
+import { getFirebaseAdmin } from "../../lib/firebase-admin";
+import { getUserData, getUserDataUsage, createProject, deleteProject } from "../../services/dashboardService";
+
+// URLパラメータからuserIdを取得
+const { userId } = Astro.params;
+
+if (!userId) {
+  return new Response("ユーザーIDが指定されていません", { status: 400 });
+}
+
+// Cookie からトークンを取得
+const cookieHeader = Astro.request.headers.get("cookie") || "";
+const cookies = Object.fromEntries(
+  cookieHeader.split("; ").filter(Boolean).map((c) => {
+    const [key, ...v] = c.split("=");
+    return [key, v.join("=")];
+  })
+);
+const token = cookies["token"] || "";
+
+// トークンからユーザーIDを取得して認証チェック
+const { auth } = getFirebaseAdmin();
+let authUser = null;
+
+try {
+  if (token) {
+    authUser = await auth.verifyIdToken(token);
+  }
+} catch (err) {
+  console.error("IDトークンの検証に失敗しました", err);
+}
+
+// ログインしていない or トークン無効 → トップへ
+if (!authUser?.uid) {
+  return new Response(null, {
+    status: 303,
+    headers: { Location: "/" },
+  });
+}
+
+// URL param の userId と一致しない → アクセス拒否
+if (authUser.uid !== userId) {
+  return new Response("アクセス権がありません", { status: 403 });
+}
+
+// ユーザーデータを取得（キャッシュ機能付き）
+const userData = await getUserData(userId);
+const dataUsage = await getUserDataUsage(userId);
+
+// プロジェクトとプラン情報
+const projects = userData.projects || [];
+const planName = userData.plan || "free";
+
+// エラーメッセージ初期化
+let postError = "";
+
+// POSTメソッド時の処理
+if (Astro.request.method === "POST") {
+  const formData = await Astro.request.formData();
+  const action = formData.get("action")?.toString() || "";
+
+  // 1. ログアウト
+  if (action === "logout") {
+    return new Response(null, {
+      status: 303,
+      headers: {
+        "Set-Cookie": "token=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT",
+        Location: "/",
+      },
+    });
+  }
+
+  // 2. プロジェクト作成
+  else if (action === "create_project") {
+    const projectName = formData.get("projectName")?.toString() || "";
+    const projectDescription = formData.get("projectDescription")?.toString() || "";
+
+    if (!projectName) {
+      postError = "プロジェクト名を入力してください";
+    } else {
+      const result = await createProject(userId, projectName, projectDescription, planName);
+      
+      if (result.success) {
+        return new Response(null, {
+          status: 303,
+          headers: { Location: `/${userId}` },
+        });
+      } else {
+        postError = result.error || "プロジェクト作成に失敗しました";
+      }
+    }
+  }
+
+  // 3. プロジェクト削除
+  else if (action === "delete_project") {
+    const projectId = formData.get("projectId")?.toString() || "";
+    const typedName = formData.get("confirmProjectName")?.toString() || "";
+    const originalName = formData.get("originalProjectName")?.toString() || "";
+
+    if (!projectId) {
+      postError = "プロジェクトIDが指定されていません";
+    } else if (typedName !== originalName) {
+      postError = "プロジェクト名が一致しません。削除を中断しました。";
+    } else {
+      const result = await deleteProject(userId, projectId);
+      
+      if (result.success) {
+        return new Response(null, {
+          status: 303,
+          headers: { Location: `/${userId}` },
+        });
+      } else {
+        postError = result.error || "プロジェクト削除に失敗しました";
+      }
+    }
+  }
+}
+---
+
+<Layout
+  title="アカウント"
+  userId={userId}
+  accountName={userData.displayName}
+  projects={projects}
+>
+  {postError && <p style="color:red;">{postError}</p>}
+  <div class="pan">
+    <p class="pan_item">
+      <a href={userId ? `/${userId}` : "/"}>トップ</a>
+      <span>
+        <svg width="7" height="7" viewBox="0 0 7 7" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M0.456 6.356V5.18L3.156 4.208L4.98 3.548V3.5L3.156 2.828L0.456 1.856V0.692L6.384 2.996V4.04L0.456 6.356Z" fill="#C4C4C4"/>
+        </svg>          
+      </span>
+      <span>{userData.displayName || "(No Name)"}</span>
+      <span>
+        <svg width="7" height="7" viewBox="0 0 7 7" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M0.456 6.356V5.18L3.156 4.208L4.98 3.548V3.5L3.156 2.828L0.456 1.856V0.692L6.384 2.996V4.04L0.456 6.356Z" fill="#C4C4C4"/>
+        </svg>          
+      </span>
+      <span>アカウント</span>
+    </p>
+  </div>
+</Layout>
+
+<style lang="scss">
+  .pan{
+    margin-top: 8px;
+    
+    &_item{
+      display: flex;
+      gap: 8px;
+      color: var(--sub-font-color);
+      font-size: var(--font-size-xs);
+      font-weight: 300;
+
+      >a{
+        color: var(--main-font-color);
+      }
+    }
+  }
+</style>

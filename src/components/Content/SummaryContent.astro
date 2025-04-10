@@ -175,11 +175,12 @@ const pageTitle = project.name || "プロジェクト概要";
   }
 
   .box{
-    width: calc(100% - 32px);
+    width: 100%;
     background-color: var(--sub-bg-color);
     border: 1px solid var(--main-border-color);
     border-radius: var(--border-radius-m);
     margin-top: 8px;
+    margin-inline: auto;
 
     &:first-of-type{
       margin-top: 16px;
@@ -197,14 +198,5 @@ const pageTitle = project.name || "プロジェクト概要";
 
   .container{
     width: 100%;
-  }
-  
-  .contents{
-
-    &::first-of-type{
-      margin-top: 16px;
-      padding-top: 0;
-      border-top: none;
-    }
   }
 </style>
