@@ -36,6 +36,9 @@ let productCategoryTags: string[] = [];
 let csrfToken = ""; 
 let redirectResponse = null;
 let csrfRetry = false;
+let redirectLocation = null; // リダイレクト先を保存する変数を追加
+
+const { formData, projectId, userId } = Astro.props;
 
 // 既存のインポート
 import LoadingOverlay from "../../components/common/LoadingOverlay.astro";
@@ -186,7 +189,7 @@ if (authUser) {
 // ▼ (4) URL パラメータから projectId を取得し、
 //       ユーザーが所有する projects[] の中から該当のプロジェクトを検索
 // ----------------------
-const { projectId } = Astro.params;
+// const { projectId } = Astro.params;
 
 // 型安全な方法で projectId を確保
 if (!projectId) {
@@ -292,7 +295,6 @@ const pageTitle = "プロジェクト別ページ";
 //     ナビゲーションにユーザー名を表示できるようにする
 // ----------------------
 
-const userId = authUser?.uid || "";
 
 // ▼ (9) blog・notice一覧を取得
 let blogList: any[] = [];
@@ -343,7 +345,7 @@ try {
 let postError = "";
 const method = Astro.request.method.toUpperCase();
 if (method === "POST") {
-  const formData = await Astro.request.formData();
+  // const formData = await Astro.request.formData();
   const action = formData.get("action")?.toString() || "";
 
   // CSRFトークンをリクエストから取得
@@ -436,10 +438,8 @@ if (method === "POST") {
         }
 
       // リダイレクト
-      return new Response(null, {
-        status: 303,
-        headers: { Location: `/projects/${projectId}` },
-      });
+      redirectLocation = `/projects/${projectId}`;
+      return Astro.redirect(redirectLocation);
     }
     
     // 既存のお知らせ投稿処理
@@ -477,10 +477,8 @@ if (method === "POST") {
       }
 
       // リダイレクト
-      return new Response(null, {
-        status: 303,
-        headers: { Location: `/projects/${projectId}` },
-      });
+      redirectLocation = `/projects/${projectId}`;
+      return Astro.redirect(redirectLocation);
     }
     
     // ブログ投稿のステータス変更処理
@@ -502,7 +500,8 @@ if (method === "POST") {
         }
       }
       
-      return Astro.redirect(`/projects/${projectId}/cms#blog-panel`);
+      redirectLocation = `/projects/${projectId}`;
+      return Astro.redirect(redirectLocation);
     }
     
     // お知らせのステータス変更処理
@@ -524,7 +523,8 @@ if (method === "POST") {
         }
       }
       
-      return Astro.redirect(`/projects/${projectId}/cms#notice-panel`);
+      redirectLocation = `/projects/${projectId}`;
+      return Astro.redirect(redirectLocation);
     }}
   } catch (err) {
     console.error("投稿時エラー:", err);
@@ -654,7 +654,16 @@ try {
     />
   </div>
 
+
 </div>
+
+  {redirectLocation && (
+    <script define:vars={{ url: redirectLocation }}>
+      window.location.href = url;
+    </script>
+  )}
+  
+  <!-- 通常のコンテンツ -->
 
 <!-- <LoadingOverlay id="loading-overlay" defaultText="処理中..." />
 <Notification id="notification-container" /> -->

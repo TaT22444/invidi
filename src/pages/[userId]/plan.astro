@@ -124,16 +124,70 @@ if (Astro.request.method === "POST") {
       }
     }
   }
+
+  // 4. プラン変更
+  else if (action === "change_plan") {
+    const newPlan = formData.get("plan")?.toString() || "";
+    
+    if (newPlan) {
+      // ここでプラン変更のロジックを実装
+      // 実際のシステムでは決済処理なども行う
+      
+      return new Response(null, {
+        status: 303,
+        headers: { Location: `/${userId}/plan?success=true` },
+      });
+    }
+  }
 }
+
+// 現在のプランに関する情報
+const currentPlanIsFree = planName === "free";
+
+// プラン情報の定義
+const plans = {
+  free: {
+    name: "Starter plan",
+    price: "無料",
+    priceMonthly: "0円",
+    priceYearly: "0円",
+    projects: 3,
+    cmsItems: 2,
+    pages: 2,
+    storage: "40MB",
+    analytics: "過去1週間まで",
+    customDomain: false,
+    formSubmissions: 10,
+    support: "コミュニティサポート"
+  },
+  pro: {
+    name: "Pro plan",
+    price: "Premium",
+    priceMonthly: "2,480円",
+    priceYearly: "24,800円",
+    projects: 5,
+    cmsItems: 5,
+    pages: 10,
+    storage: "2GB",
+    analytics: "過去1年まで",
+    customDomain: true,
+    formSubmissions: 100,
+    support: "優先サポート"
+  }
+};
+
+// 請求周期の状態管理
+const billingCycle = Astro.url.searchParams.get('cycle') || 'monthly';
 ---
 
 <Layout
-  title="App Title"
+  title="プラン設定"
   userId={userId}
   accountName={userData.displayName}
   projects={projects}
 >
-  {postError && <p style="color:red;">{postError}</p>}
+  {postError && <p class="error-message">{postError}</p>}
+  
   <div class="pan">
     <p class="pan_item">
       <a href={userId ? `/${userId}` : "/"}>トップ</a>
@@ -151,21 +205,396 @@ if (Astro.request.method === "POST") {
       <span>プラン</span>
     </p>
   </div>
+
+  <div class="plan-container">
+    <h1 class="page-title">プラン</h1>
+    
+    <div class="billing-cycle">
+      <div class="cycle-toggle">
+        <a href={`/${userId}/plan?cycle=monthly`} class={`cycle-btn ${billingCycle === 'monthly' ? 'active' : ''}`}>月払い</a>
+        <a href={`/${userId}/plan?cycle=yearly`} class={`cycle-btn ${billingCycle === 'yearly' ? 'active' : ''}`}>年払い</a>
+      </div>
+    </div>
+    
+    <div class="plans-grid">
+      <!-- フリープラン -->
+      <div class={`plan-card ${currentPlanIsFree ? 'current-plan' : ''}`}>
+        <div class="plan-header">
+          <h2 class="plan-name">{plans.free.name}</h2>
+          <p class="plan-price">
+            {billingCycle === 'monthly' ? '無料 / 月' : '無料 / 年'}
+          </p>
+        </div>
+        
+        <div class="plan-features">
+          <div class="feature">
+            <span class="feature-label">プロジェクト数:</span>
+            <span class="feature-value">{plans.free.projects}個</span>
+          </div>
+          <div class="feature">
+            <span class="feature-label">CMS数:</span>
+            <span class="feature-value">{plans.free.cmsItems}個</span>
+          </div>
+          <div class="feature">
+            <span class="feature-label">ページ数:</span>
+            <span class="feature-value">{plans.free.pages}個</span>
+          </div>
+          <div class="feature">
+            <span class="feature-label">ストレージ:</span>
+            <span class="feature-value">{plans.free.storage}</span>
+          </div>
+          <div class="feature">
+            <span class="feature-label">アナリティクス:</span>
+            <span class="feature-value">{plans.free.analytics}</span>
+          </div>
+          <div class="feature">
+            <span class="feature-label">カスタムドメイン:</span>
+            <span class="feature-value">{plans.free.customDomain ? '可能' : '不可'}</span>
+          </div>
+          <div class="feature">
+            <span class="feature-label">フォーム送信数:</span>
+            <span class="feature-value">{plans.free.formSubmissions}/月</span>
+          </div>
+          <div class="feature">
+            <span class="feature-label">サポート:</span>
+            <span class="feature-value">{plans.free.support}</span>
+          </div>
+        </div>
+        
+        {currentPlanIsFree ? (
+          <div class="current-plan-badge">現在のプラン</div>
+        ) : (
+          <form method="POST" class="plan-action">
+            <input type="hidden" name="action" value="change_plan">
+            <input type="hidden" name="plan" value="free">
+            <button type="submit" class="plan-btn downgrade">ダウングレード</button>
+          </form>
+        )}
+      </div>
+      
+      <!-- プロプラン -->
+      <div class={`plan-card ${!currentPlanIsFree ? 'current-plan' : ''}`}>
+        <div class="plan-header">
+          <h2 class="plan-name">{plans.pro.name}</h2>
+          <p class="plan-price">
+            {billingCycle === 'monthly' ? plans.pro.priceMonthly + ' / 月' : plans.pro.priceYearly + ' / 年'}
+          </p>
+        </div>
+        
+        <div class="plan-features">
+          <div class="feature">
+            <span class="feature-label">プロジェクト数:</span>
+            <span class="feature-value">{plans.pro.projects}個</span>
+          </div>
+          <div class="feature">
+            <span class="feature-label">CMS数:</span>
+            <span class="feature-value">{plans.pro.cmsItems}個</span>
+          </div>
+          <div class="feature">
+            <span class="feature-label">ページ数:</span>
+            <span class="feature-value">{plans.pro.pages}個</span>
+          </div>
+          <div class="feature">
+            <span class="feature-label">ストレージ:</span>
+            <span class="feature-value">{plans.pro.storage}</span>
+          </div>
+          <div class="feature">
+            <span class="feature-label">アナリティクス:</span>
+            <span class="feature-value">{plans.pro.analytics}</span>
+          </div>
+          <div class="feature">
+            <span class="feature-label">カスタムドメイン:</span>
+            <span class="feature-value">{plans.pro.customDomain ? '可能' : '不可'}</span>
+          </div>
+          <div class="feature">
+            <span class="feature-label">フォーム送信数:</span>
+            <span class="feature-value">{plans.pro.formSubmissions}/月</span>
+          </div>
+          <div class="feature">
+            <span class="feature-label">サポート:</span>
+            <span class="feature-value">{plans.pro.support}</span>
+          </div>
+        </div>
+        
+        {!currentPlanIsFree ? (
+          <div class="current-plan-badge">現在のプラン</div>
+        ) : (
+          <form method="POST" class="plan-action">
+            <input type="hidden" name="action" value="change_plan">
+            <input type="hidden" name="plan" value="pro">
+            <button type="submit" class="plan-btn upgrade">選択</button>
+          </form>
+        )}
+      </div>
+    </div>
+    
+    <div class="plan-details">
+      <h3 class="details-title">現在の利用状況</h3>
+      <div class="usage-stats">
+        <div class="usage-item">
+          <span class="usage-label">ストレージ使用量:</span>
+          <div class="usage-bar">
+            <div class="usage-progress" style={`width: ${(dataUsage.storage / (currentPlanIsFree ? 40 : 2048)) * 100}%`}></div>
+          </div>
+          <span class="usage-value">{dataUsage.storage}MB / {currentPlanIsFree ? '40MB' : '2GB'}</span>
+        </div>
+        <div class="usage-item">
+          <span class="usage-label">プロジェクト数:</span>
+          <div class="usage-bar">
+            <div class="usage-progress" style={`width: ${(projects.length / (currentPlanIsFree ? 3 : 5)) * 100}%`}></div>
+          </div>
+          <span class="usage-value">{projects.length} / {currentPlanIsFree ? '3' : '5'}</span>
+        </div>
+      </div>
+    </div>
+  </div>
 </Layout>
 
 <style lang="scss">
-  .pan{
+  .error-message {
+    color: var(--error-color);
+    margin-bottom: 16px;
+    padding: 8px 16px;
+    background-color: var(--error-bg-color);
+    border-radius: var(--border-radius-s);
+  }
+
+  .pan {
     margin-top: 8px;
     
-    &_item{
+    &_item {
       display: flex;
       gap: 8px;
       color: var(--sub-font-color);
       font-size: var(--font-size-xs);
       font-weight: 300;
 
-      >a{
+      > a {
         color: var(--main-font-color);
+      }
+    }
+  }
+  
+  .plan-container {
+    max-width: 1200px;
+    margin: 32px auto;
+  }
+  
+  .page-title {
+    font-size: var(--font-size-xl);
+    font-weight: 600;
+    margin-bottom: 24px;
+    color: var(--main-font-color);
+  }
+  
+  .billing-cycle {
+    margin-bottom: 32px;
+    display: flex;
+    justify-content: center;
+    
+    .cycle-toggle {
+      display: flex;
+      background-color: var(--sub-bg-color);
+      border: 1px solid var(--main-border-color);
+      border-radius: var(--border-radius-m);
+      overflow: hidden;
+    }
+    
+    .cycle-btn {
+      padding: 12px 24px;
+      font-size: var(--font-size-s);
+      color: var(--main-font-color);
+      cursor: pointer;
+      transition: all 0.3s ease;
+      
+      &.active {
+        background-color: var(--accent-bg-color);
+        color: white;
+      }
+      
+      &:hover:not(.active) {
+        background-color: var(--item-bg-color);
+      }
+    }
+  }
+  
+  .plans-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 24px;
+    margin-bottom: 48px;
+  }
+  
+  .plan-card {
+    background-color: var(--sub-bg-color);
+    border: 1px solid var(--main-border-color);
+    border-radius: var(--border-radius-m);
+    padding: 24px;
+    position: relative;
+    transition: all 0.3s ease;
+    
+    &.current-plan {
+      border: 1px solid var(--accent-color);
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+    }
+    
+    &:hover {
+      transform: translateY(-4px);
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+    }
+  }
+  
+  .plan-header {
+    margin-bottom: 24px;
+    text-align: center;
+    
+    .plan-name {
+      font-size: var(--font-size-l);
+      font-weight: 600;
+      margin-bottom: 8px;
+      color: var(--main-font-color);
+    }
+    
+    .plan-price {
+      font-size: var(--font-size-m);
+      color: var(--sub-font-color);
+      font-weight: 500;
+    }
+  }
+  
+  .plan-features {
+    margin-bottom: 24px;
+    
+    .feature {
+      display: flex;
+      justify-content: space-between;
+      padding: 8px 0;
+      border-bottom: 1px solid var(--sub-border-color);
+      
+      &:last-child {
+        border-bottom: none;
+      }
+      
+      .feature-label {
+        color: var(--sub-font-color);
+        font-size: var(--font-size-xs);
+      }
+      
+      .feature-value {
+        color: var(--main-font-color);
+        font-size: var(--font-size-xs);
+        font-weight: 500;
+      }
+    }
+  }
+  
+  .current-plan-badge {
+    background-color: var(--accent-bg-color);
+    color: white;
+    font-size: var(--font-size-xxs);
+    font-weight: 500;
+    padding: 6px 12px;
+    border-radius: var(--border-radius-s);
+    position: absolute;
+    top: 16px;
+    right: 16px;
+  }
+  
+  .plan-action {
+    text-align: center;
+    
+    .plan-btn {
+      width: 100%;
+      padding: 12px;
+      border-radius: var(--border-radius-s);
+      font-size: var(--font-size-s);
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      
+      &.upgrade {
+        background-color: var(--accent-bg-color);
+        color: white;
+        border: none;
+        
+        &:hover {
+          background-color: var(--accent-hover-color);
+        }
+      }
+      
+      &.downgrade {
+        background-color: transparent;
+        color: var(--main-font-color);
+        border: 1px solid var(--main-border-color);
+        
+        &:hover {
+          background-color: var(--item-bg-color);
+        }
+      }
+    }
+  }
+  
+  .plan-details {
+    background-color: var(--sub-bg-color);
+    border: 1px solid var(--main-border-color);
+    border-radius: var(--border-radius-m);
+    padding: 24px;
+    
+    .details-title {
+      font-size: var(--font-size-m);
+      font-weight: 600;
+      margin-bottom: 16px;
+      color: var(--main-font-color);
+    }
+  }
+  
+  .usage-stats {
+    display: grid;
+    gap: 16px;
+    
+    .usage-item {
+      display: grid;
+      grid-template-columns: 1fr 2fr 1fr;
+      align-items: center;
+      gap: 16px;
+      
+      .usage-label {
+        color: var(--sub-font-color);
+        font-size: var(--font-size-xs);
+      }
+      
+      .usage-bar {
+        height: 8px;
+        background-color: var(--item-bg-color);
+        border-radius: 4px;
+        overflow: hidden;
+        
+        .usage-progress {
+          height: 100%;
+          background-color: var(--accent-bg-color);
+          border-radius: 4px;
+        }
+      }
+      
+      .usage-value {
+        color: var(--main-font-color);
+        font-size: var(--font-size-xs);
+        text-align: right;
+      }
+    }
+  }
+  
+  @media (max-width: 768px) {
+    .plans-grid {
+      grid-template-columns: 1fr;
+    }
+    
+    .usage-item {
+      grid-template-columns: 1fr !important;
+      gap: 8px !important;
+      
+      .usage-value {
+        text-align: left !important;
       }
     }
   }

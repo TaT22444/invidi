@@ -2,6 +2,16 @@
   width: calc(100% - 32px);
   margin-inline: 16px;
 
+  @media (width > 1400px) {
+    width: calc(100% - 48px);
+    margin-inline: 24px;
+  }
+
+  @media (width < 768px) {
+    width: calc(100% - 16px);
+    margin-inline: 8px;
+  }
+
   &_btns{
     display: flex;
     justify-content: right;
@@ -178,10 +188,14 @@
 }
 
 .cms-container{
-  margin-top: 80px;
+  margin-top: 96px;
   width: 100%;
-  max-width: 960px;
+  max-width: 1080px;
   margin-inline: auto;
+
+  @media (width > 1400px) {
+    margin-top: 144px;
+  }
 
   &_title{
     font-weight: 500;
@@ -191,7 +205,10 @@
 }
 
 .form-container{
-  margin-top: 80px;
+  margin-top: 120px;
+  width: 100%;
+  max-width: 1400px;
+  margin-inline: auto;
   background-color: var(--sub-bg-color);
   border: 1px solid var(--main-border-color);
   border-radius: var(--border-radius-m);
@@ -376,9 +393,9 @@
     }
 
     &_img{
-      width: 48%;
+      width: 33%;
       height: 100%;
-      min-height: 120px;
+      // min-height: 120px;
       aspect-ratio: 5/3;
       background-color: var(--elem-bg-color);
       border-radius: var(--border-radius-m);
@@ -724,7 +741,7 @@
 .form{
   margin-inline: auto;
   margin-top: 24px;
-  padding-top: 24px;
+  padding-top: 32px;
   border-top: 1px solid var(--main-border-color);
 
   &-body{
@@ -732,7 +749,7 @@
 
     &_input-wrapper{
       position: relative;
-      margin-top: 32px;
+      margin-top: 40px;
       display: flex;
       flex-direction: column;
       gap: 16px;
@@ -797,7 +814,7 @@
     }
     >fieldset{
       position: relative;
-      margin-top: 32px;
+      margin-top: 40px;
     }
 
     &_btn{

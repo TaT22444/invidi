@@ -293,16 +293,16 @@ const tabs = [
         if (aside && main) {
           if (tabId === 'preview') {
             aside.style.display = 'none';
-            main.style.width = '100%';
-            main.style.maxWidth = 'none';
+            // main.style.width = '100%';
+            // main.style.maxWidth = 'none';
             main.style.marginLeft = '0';
-            main.style.padding = '0';
+            // main.style.padding = '0';
           } else {
             aside.style.display = '';
-            main.style.width = 'calc(100% - 264px)';
-            main.style.maxWidth = '1400px';
-            main.style.marginLeft = 'auto';
-            main.style.padding = '8px 16px 0 8px';
+            // main.style.width = 'calc(100% - 264px)';
+            // main.style.maxWidth = '1400px';
+            // main.style.marginLeft = 'auto';
+            // main.style.padding = '8px 16px 0 8px';
           }
         }
         
@@ -320,16 +320,16 @@ const tabs = [
       if (aside && main) {
         if (tabId === 'preview') {
           aside.style.display = 'none';
-          main.style.width = '100%';
-          main.style.maxWidth = 'none';
+          // main.style.width = '100%';
+          // main.style.maxWidth = 'none';
           main.style.marginLeft = '0';
-          main.style.padding = '0';
+          // main.style.padding = '0';
         } else {
           aside.style.display = '';
-          main.style.width = 'calc(100% - 264px)';
-          main.style.maxWidth = '1400px';
-          main.style.marginLeft = 'auto';
-          main.style.padding = '8px 16px 0 8px';
+          // main.style.width = 'calc(100% - 264px)';
+          // main.style.maxWidth = '1400px';
+          // main.style.marginLeft = 'auto';
+          // main.style.padding = '8px 16px 0 8px';
         }
       }
       
@@ -374,10 +374,10 @@ const tabs = [
     // 初期表示時もプレビュー状態を設定
     if (aside && main && initialTabId === 'preview') {
       aside.style.display = 'none';
-      main.style.width = '100%';
-      main.style.maxWidth = 'none';
+      // main.style.width = '100%';
+      // main.style.maxWidth = 'none';
       main.style.marginLeft = '0';
-      main.style.padding = '0';
+      // main.style.padding = '0';
     }
     
     switchContent(initialTabId);

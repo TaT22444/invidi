@@ -3,6 +3,7 @@ export const prerender = false;
 import Layout from '../../layouts/Layout.astro';
 import '../../styles/profile.scss';
 import ProjectNav from '../../components/ProjectNav.astro';
+import { invalidateCacheByPrefix } from '../../utils/cache';
 
 import admin from "firebase-admin";
 // Firebase Admin SDK の初期化（初回のみ実施）
@@ -68,325 +69,190 @@ const projects = userData && userData.projects ? userData.projects : [];
 let postError = "";
 let defaultFormMode = "login";
 
-const method = Astro.request.method.toUpperCase();
-if (method === "POST") {
-  const formData = await Astro.request.formData();
-  const action = formData.get("action")?.toString() || "";
+// formDataをpropsとして受け取る
+const { formData, projectId, userId } = Astro.props;
 
-  if (action === "login") {
-    // ログイン処理：Firebase Auth REST API を使ってサインイン
-    const email = formData.get("email")?.toString() || "";
-    const password = formData.get("password")?.toString() || "";
-    const apiKey = import.meta.env.PUBLIC_FIREBASE_API_KEY;
-    const res = await fetch(
-      `https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${apiKey}`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          email,
-          password,
-          returnSecureToken: true,
-        }),
-      }
-    );
-    const data = await res.json();
-    if (data.error) {
-      console.error("[Login Error]", data.error);
-      postError = "ログインに失敗しました";
-    } else {
-      return new Response(null, {
-        status: 303,
-        headers: {
-          "Set-Cookie": `token=${data.idToken}; Path=/; HttpOnly`,
-          Location: "/",
-        },
+// リダイレクト情報を保存する変数
+let redirectLocation = null;
+let responseData = null;
+
+// 代わりに、渡されたformDataを使用する
+if (formData && formData.get('action') === 'update_project_banner') {
+  const bannerImage = formData.get("bannerImage");
+  const projectIdFromForm = formData.get("projectId")?.toString();
+  const siteName = formData.get('siteName')?.toString() || '';
+  const description = formData.get('description')?.toString() || '';
+  
+  if (bannerImage && bannerImage instanceof File && projectIdFromForm) {
+    try {
+      // バケット名を明示的に指定
+      const bucket = process.env.FIREBASE_STORAGE_BUCKET || "test-87192.firebasestorage.app";
+      const storageRef = admin.storage().bucket(bucket);
+      
+      const fileRef = storageRef.file(`projects/${projectIdFromForm}/banner/${Date.now()}_${bannerImage.name}`);
+      
+      // 残りのコードはそのまま
+      const buffer = Buffer.from(await bannerImage.arrayBuffer());
+      
+      await fileRef.save(buffer, {
+        metadata: {
+          contentType: bannerImage.type
+        }
       });
-    }
-  } else if (action === "register") {
-    // 新規登録処理：Admin SDK を使ってユーザー作成し、Firestore にユーザーデータを保存
-    const email = formData.get("email")?.toString() || "";
-    const password = formData.get("password")?.toString() || "";
-		const confirmPassword = formData.get("confirmPassword")?.toString() || "";
-    const displayName = formData.get("displayName")?.toString() || "";
-    const bio = formData.get("bio")?.toString() || "";
-    // パスワード一致チェック
-    if (password !== confirmPassword) {
-      postError = "パスワードが一致しません";
-			defaultFormMode = "register";
-    } else {
-      try {
-        const userRecord = await adminAuth.createUser({
-          email,
-          password,
-          displayName,
-        });
-        await db.collection("users").doc(userRecord.uid).set({
-          displayName,
-          email,
-          bio,
-          plan: "free",    // デフォルトはフリープラン
-          projects: []     // 初期はプロジェクト未登録
-        });
-        const customToken = await adminAuth.createCustomToken(userRecord.uid);
-        return new Response(null, {
-          status: 303,
-          headers: {
-            "Set-Cookie": `token=${customToken}; Path=/; HttpOnly`,
-            Location: "/",
-          },
-        });
-      } catch (err) {
-        console.error("[Register Error]", err);
-        postError = "登録に失敗しました";
-      }
-    }
-  } else if (action === "logout") {
-    // ログアウト：Cookie をクリア
-    return new Response(null, {
-      status: 303,
-      headers: {
-        "Set-Cookie": `token=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT`,
-        Location: "/",
-      },
-    });
-  } else if (action === "create_project") {
-    // 新しいプロジェクトの作成処理
-    if (!authUser) {
-      postError = "ログインしてください";
-    } else {
-      const projectName = formData.get("projectName")?.toString() || "";
-      const projectDescription = formData.get("projectDescription")?.toString() || "";
-      // 初期値としてフォロワー数 0、現在のページ 0、最大ページ 3 を設定
-      const newProject = {
-        name: projectName,
-        description: projectDescription,
-        followers: 0,
-        currentPages: 0,
-        maxPages: 3,
-        createdAt: new Date()
-      };
-      const userRef = db.collection("users").doc(authUser.uid);
-      const userSnap = await userRef.get();
-      if (userSnap.exists) {
-        const currentProjects = userSnap.data().projects || [];
-        currentProjects.push(newProject);
-        await userRef.update({ projects: currentProjects });
-        return new Response(null, {
-          status: 303,
-          headers: { Location: "/" },
-        });
-      } else {
-        postError = "ユーザーデータが見つかりません";
-      }
-    }
-  } else if (action === "update_project_banner") {
-    const bannerImage = formData.get("bannerImage");
-    const projectIdFromForm = formData.get("projectId")?.toString();
-    
-    if (bannerImage && bannerImage instanceof File && projectIdFromForm) {
-      try {
-        // バケット名を明示的に指定
-        const bucket = process.env.FIREBASE_STORAGE_BUCKET || "test-87192.firebasestorage.app";
-        const storageRef = admin.storage().bucket(bucket);
-        
-        const fileRef = storageRef.file(`projects/${projectIdFromForm}/banner/${Date.now()}_${bannerImage.name}`);
-        
-        // 残りのコードはそのまま
-        const buffer = Buffer.from(await bannerImage.arrayBuffer());
-        
-        await fileRef.save(buffer, {
-          metadata: {
-            contentType: bannerImage.type
+      
+      // 公開URLを取得
+      const [url] = await fileRef.getSignedUrl({
+        action: "read",
+        expires: "03-01-2500"
+      });
+      
+      
+      // Firestoreにバナー画像URLを保存
+      const projectRef = db.collection("projects").doc(projectIdFromForm);
+      await projectRef.update({
+        bannerUrl: url
+      });
+      
+      // ユーザーのprojects配列内の該当プロジェクトも更新
+      if (userData && userData.projects) {
+        const updatedProjects = userData.projects.map((p) => {
+          if (p.id === projectIdFromForm) {
+            return { ...p, bannerUrl: url };
           }
+          return p;
         });
         
-        // 公開URLを取得
-        const [url] = await fileRef.getSignedUrl({
-          action: "read",
-          expires: "03-01-2500"
+        await db.collection("users").doc(authUser.uid).update({
+          projects: updatedProjects
         });
-        
-        // Firestoreにバナー画像URLを保存
-        const projectRef = db.collection("projects").doc(projectIdFromForm);
-        await projectRef.update({
-          bannerUrl: url
-        });
-        
-        // ユーザーのprojects配列内の該当プロジェクトも更新
-        if (userData && userData.projects) {
-          const updatedProjects = userData.projects.map((p) => {
-            if (p.id === projectIdFromForm) {
-              return { ...p, bannerUrl: url };
-            }
-            return p;
-          });
-          
-          await db.collection("users").doc(authUser.uid).update({
-            projects: updatedProjects
-          });
+      }
+      
+      // 成功レスポンスを返す
+      responseData = { success: true, imageUrl: url };
+      invalidateCacheByPrefix(`project:${projectIdFromForm}`);
+    } catch (error) {
+      console.error("バナー画像アップロードエラー:", error);
+      responseData = { success: false, error: "画像のアップロードに失敗しました" };
+    }
+  }
+} else if (formData && formData.get('action') === 'update_project_profile') {
+  const profileImage = formData.get("profileImage");
+  const projectIdFromForm = formData.get("projectId")?.toString();
+  
+  if (profileImage && profileImage instanceof File && projectIdFromForm) {
+    try {
+      // バケット名を明示的に指定
+      const bucket = process.env.FIREBASE_STORAGE_BUCKET || "test-87192.firebasestorage.app";
+      const storageRef = admin.storage().bucket(bucket);
+      
+      const fileRef = storageRef.file(`projects/${projectIdFromForm}/profile/${Date.now()}_${profileImage.name}`);
+      
+      // 残りのコードはそのまま
+      const buffer = Buffer.from(await profileImage.arrayBuffer());
+      
+      await fileRef.save(buffer, {
+        metadata: {
+          contentType: profileImage.type
         }
-        
-        // 成功レスポンスを返す
-        return new Response(JSON.stringify({
-          success: true,
-          imageUrl: url
-        }), {
-          status: 200,
-          headers: {
-            "Content-Type": "application/json"
+      });
+      
+      // 公開URLを取得
+      const [url] = await fileRef.getSignedUrl({
+        action: "read",
+        expires: "03-01-2500"
+      });
+      
+      // Firestoreにプロフィール画像URLを保存
+      const projectRef = db.collection("projects").doc(projectIdFromForm);
+      await projectRef.update({
+        profileImageUrl: url
+      });
+      
+      // ユーザーのprojects配列内の該当プロジェクトも更新
+      if (userData && userData.projects) {
+        const updatedProjects = userData.projects.map((p) => {
+          if (p.id === projectIdFromForm) {
+            return { ...p, profileImageUrl: url };
           }
+          return p;
         });
-      } catch (error) {
-        console.error("バナー画像アップロードエラー:", error);
-        return new Response(JSON.stringify({
-          success: false,
-          error: "画像のアップロードに失敗しました"
-        }), {
-          status: 500,
-          headers: {
-            "Content-Type": "application/json"
-          }
+        
+        await db.collection("users").doc(authUser.uid).update({
+          projects: updatedProjects
         });
       }
+      
+      // 成功レスポンスを返す
+      responseData = { success: true, imageUrl: url};
+      invalidateCacheByPrefix(`project:${projectIdFromForm}`);
+    } catch (error) {
+      console.error("プロフィール画像アップロードエラー:", error);
+      responseData = { success: false, error: "画像のアップロードに失敗しました" };
     }
-  } else if (action === "update_project_profile") {
-    const profileImage = formData.get("profileImage");
-    const projectIdFromForm = formData.get("projectId")?.toString();
-    
-    if (profileImage && profileImage instanceof File && projectIdFromForm) {
-      try {
-        // バケット名を明示的に指定
-        const bucket = process.env.FIREBASE_STORAGE_BUCKET || "test-87192.firebasestorage.app";
-        const storageRef = admin.storage().bucket(bucket);
-        
-        const fileRef = storageRef.file(`projects/${projectIdFromForm}/profile/${Date.now()}_${profileImage.name}`);
-        
-        // 残りのコードはそのまま
-        const buffer = Buffer.from(await profileImage.arrayBuffer());
-        
-        await fileRef.save(buffer, {
-          metadata: {
-            contentType: profileImage.type
+  }
+} else if (formData && formData.get('action') === 'update_project_info') {
+  const projectIdFromForm = formData.get("projectId")?.toString();
+  const projectDescription = formData.get("projectDescription")?.toString();
+  const siteName = formData.get("siteName")?.toString();
+  
+  if (projectIdFromForm) {
+    try {
+      const projectRef = db.collection("projects").doc(projectIdFromForm);
+      
+      // 更新データを準備（明示的に型を指定し、nameは絶対に含めない）
+      const updateData: Record<string, string> = {};
+      if (projectDescription) updateData.description = projectDescription;
+      if (siteName) updateData.siteName = siteName;
+      
+      // nameが誤って含まれていないことを確認
+      if ('name' in updateData) {
+        delete updateData.name;
+      }
+      
+      console.log("更新するデータ:", JSON.stringify(updateData)); // デバッグ用ログ
+      
+      // Firestoreを更新（siteNameのみ）
+      await projectRef.update(updateData);
+      
+      // ユーザーのprojects配列内の該当プロジェクトも更新
+      if (userData && userData.projects) {
+        const updatedProjects = userData.projects.map((p: any) => {
+          if (p.id === projectIdFromForm) {
+            // スプレッド演算子ではなく、明示的にフィールドを指定して更新
+            const updatedProject = {
+              id: p.id,
+              name: p.name, // 元のnameを維持
+              description: projectDescription || p.description,
+              siteName: siteName || p.siteName,
+              // その他必要なフィールドを保持
+              followers: p.followers,
+              currentPages: p.currentPages,
+              maxPages: p.maxPages,
+              createdAt: p.createdAt,
+              bannerUrl: p.bannerUrl,
+              profileImageUrl: p.profileImageUrl,
+              snsLinks: p.snsLinks || [],
+              plan: p.plan || "free"
+            };
+            return updatedProject;
           }
+          return p;
         });
         
-        // 公開URLを取得
-        const [url] = await fileRef.getSignedUrl({
-          action: "read",
-          expires: "03-01-2500"
-        });
-        
-        // Firestoreにプロフィール画像URLを保存
-        const projectRef = db.collection("projects").doc(projectIdFromForm);
-        await projectRef.update({
-          profileImageUrl: url
-        });
-        
-        // ユーザーのprojects配列内の該当プロジェクトも更新
-        if (userData && userData.projects) {
-          const updatedProjects = userData.projects.map((p) => {
-            if (p.id === projectIdFromForm) {
-              return { ...p, profileImageUrl: url };
-            }
-            return p;
-          });
-          
-          await db.collection("users").doc(authUser.uid).update({
-            projects: updatedProjects
-          });
-        }
-        
-        // 成功レスポンスを返す
-        return new Response(JSON.stringify({
-          success: true,
-          imageUrl: url
-        }), {
-          status: 200,
-          headers: {
-            "Content-Type": "application/json"
-          }
-        });
-      } catch (error) {
-        console.error("プロフィール画像アップロードエラー:", error);
-        return new Response(JSON.stringify({
-          success: false,
-          error: "画像のアップロードに失敗しました"
-        }), {
-          status: 500,
-          headers: {
-            "Content-Type": "application/json"
-          }
+        await db.collection("users").doc(authUser!.uid).update({
+          projects: updatedProjects
         });
       }
+
+      responseData = { success: true };
+      invalidateCacheByPrefix(`project:${projectIdFromForm}`);
+      
+    } catch (error) {
+      console.error("プロジェクト情報の更新に失敗しました:", error);
+      responseData = { error: "更新に失敗しました" };
     }
-  } else if (action === "update_project_info") {
-    const projectIdFromForm = formData.get("projectId")?.toString();
-    const projectDescription = formData.get("projectDescription")?.toString();
-    const siteName = formData.get("siteName")?.toString();
-    
-    if (projectIdFromForm) {
-      try {
-        const projectRef = db.collection("projects").doc(projectIdFromForm);
-        
-        // 更新データを準備（明示的に型を指定し、nameは絶対に含めない）
-        const updateData: Record<string, string> = {};
-        if (projectDescription) updateData.description = projectDescription;
-        if (siteName) updateData.siteName = siteName;
-        
-        // nameが誤って含まれていないことを確認
-        if ('name' in updateData) {
-          delete updateData.name;
-        }
-        
-        console.log("更新するデータ:", JSON.stringify(updateData)); // デバッグ用ログ
-        
-        // Firestoreを更新（siteNameのみ）
-        await projectRef.update(updateData);
-        
-        // ユーザーのprojects配列内の該当プロジェクトも更新
-        if (userData && userData.projects) {
-          const updatedProjects = userData.projects.map((p: any) => {
-            if (p.id === projectIdFromForm) {
-              // スプレッド演算子ではなく、明示的にフィールドを指定して更新
-              const updatedProject = {
-                id: p.id,
-                name: p.name, // 元のnameを維持
-                description: projectDescription || p.description,
-                siteName: siteName || p.siteName,
-                // その他必要なフィールドを保持
-                followers: p.followers,
-                currentPages: p.currentPages,
-                maxPages: p.maxPages,
-                createdAt: p.createdAt,
-                bannerUrl: p.bannerUrl,
-                profileImageUrl: p.profileImageUrl,
-                snsLinks: p.snsLinks || [],
-                plan: p.plan || "free"
-              };
-              return updatedProject;
-            }
-            return p;
-          });
-          
-          await db.collection("users").doc(authUser!.uid).update({
-            projects: updatedProjects
-          });
-        }
-        
-        return new Response(JSON.stringify({ success: true }), {
-          status: 200,
-          headers: { "Content-Type": "application/json" }
-        });
-      } catch (error) {
-        console.error("プロジェクト情報の更新に失敗しました:", error);
-        return new Response(JSON.stringify({ error: "更新に失敗しました" }), {
-          status: 500,
-          headers: { "Content-Type": "application/json" }
-        });
-      }
-    }
-  } else if (action === "add_sns_link") {
+  }
+} else if (formData && formData.get('action') === 'add_sns_link') {
     const projectIdFromForm = formData.get("projectId")?.toString();
     const snsType = formData.get("snsType")?.toString();
     const snsName = formData.get("snsName")?.toString();
@@ -408,40 +274,33 @@ if (method === "POST") {
           
           if (isDuplicate) {
             // 重複がある場合はエラーレスポンスを返す
-            return new Response(JSON.stringify({ 
+            responseData = { 
               success: false, 
               error: "同じタイプ・同じアカウント名のSNSが既に登録されています。" 
-            }), {
-              status: 400,
-              headers: { "Content-Type": "application/json" }
+            };
+          } else {
+            // 新しいSNSリンクを追加
+            snsLinks.push({
+              type: snsType,
+              name: snsName,
+              description: snsDescription || ""
             });
+            
+            // Firestoreに保存
+            await projectRef.update({ snsLinks });
+            
+            // 成功レスポンス
+            responseData = { success: true };
+            redirectLocation = `/projects/${projectId}`;
+            return Astro.redirect(redirectLocation);
           }
-          
-          // 新しいSNSリンクを追加
-          snsLinks.push({
-            type: snsType,
-            name: snsName,
-            description: snsDescription || ""
-          });
-          
-          // Firestoreに保存
-          await projectRef.update({ snsLinks });
-          
-          // 成功レスポンス
-          return new Response(JSON.stringify({ success: true }), {
-            status: 200,
-            headers: { "Content-Type": "application/json" }
-          });
         }
       } catch (error) {
         console.error("SNSリンクの追加に失敗しました:", error);
-        return new Response(JSON.stringify({ error: "SNSリンクの追加に失敗しました" }), {
-          status: 500,
-          headers: { "Content-Type": "application/json" }
-        });
+        responseData = { error: "SNSリンクの追加に失敗しました" };
       }
     }
-  } else if (action === "delete_sns_link") {
+  } else if (formData && formData.get('action') === "delete_sns_link") {
     const projectIdFromForm = formData.get("projectId")?.toString();
     const snsIndex = parseInt(formData.get("snsIndex")?.toString() || "-1");
     
@@ -462,64 +321,39 @@ if (method === "POST") {
             await projectRef.update({ snsLinks });
             
             // 成功レスポンス
-            return new Response(JSON.stringify({ success: true }), {
-              status: 200,
-              headers: { "Content-Type": "application/json" }
-            });
+            responseData = { success: true };
           }
         }
       } catch (error) {
         console.error("SNSリンクの削除に失敗しました:", error);
-        return new Response(JSON.stringify({ error: "SNSリンクの削除に失敗しました" }), {
-          status: 500,
-          headers: { "Content-Type": "application/json" }
-        });
+        responseData = { error: "SNSリンクの削除に失敗しました" };
       }
     }
-  } else if (action === "add_sns") {
+  } else if (formData && formData.get('action') === "add_sns") {
     const snsType = formData.get("snsType")?.toString() || "";
     const snsName = formData.get("snsName")?.toString() || "";
     const snsDescription = formData.get("snsDescription")?.toString() || "";
-    
-    try {
-      const projectRef = db.collection("projects").doc(projectId);
-      const projectSnap = await projectRef.get();
-      
-      if (projectSnap.exists) {
-        const projectData = projectSnap.data();
-        const snsLinks = projectData?.snsLinks || [];
-        
-        // フリープランで5つ以上のSNSリンクがある場合はエラー
-        if (projectData?.plan === "free" && snsLinks.length >= 5) {
-          return new Response(null, {
-            status: 303,
-            headers: { 
-              Location: `/projects/${projectId}/profile?error=sns_limit_reached` 
-            }
-          });
-        }
-        
-        // 既存のSNS追加処理...
-      }
-    } catch (error) {
-      console.error("SNSリンク追加中にエラーが発生しました:", error);
-      return new Response(JSON.stringify({ error: "SNSリンクの追加に失敗しました" }), {
-        status: 500,
-        headers: { "Content-Type": "application/json" }
-      });
-    }
-  }
-}
 
-const { projectId } = Astro.params;
+        // Firestore へ追加
+    const addSnsRef = db
+      .collection("projects")
+      .doc(projectId)
+      .collection("sns");
+    await addSnsRef.add({
+      type: snsType,
+      name: snsName,
+      description: snsDescription,
+      createdAt: new Date(),
+    });
+
+    // リダイレクト
+    redirectLocation = `/projects/${projectId}`;
+  }
 
 // ユーザーが認証されているか確認
 if (!authUser || !userData) {
   console.error("認証されていないユーザーです");
-  return new Response(null, {
-    status: 303,
-    headers: { Location: "/" },
-  });
+  redirectLocation = "/";
 }
 
 // プロジェクトデータの取得（ユーザーのプロジェクト配列から）
@@ -531,10 +365,7 @@ if (userData && userData.projects) {
 // プロジェクトがユーザーに属しているか確認
 if (!currentProject) {
   console.error("該当のプロジェクトが見つかりません、またはアクセス権限がありません");
-  return new Response(null, {
-    status: 303,
-    headers: { Location: "/" },
-  });
+  redirectLocation = "/";
 }
 
 // ここからFirestoreからプロジェクトの追加データを取得
@@ -561,9 +392,6 @@ try {
   console.error("Firestoreからの追加データ取得に失敗:", error);
   // 追加データの取得に失敗しても、基本的なプロジェクトデータがあるので処理を続行
 }
-
-
-const userId = authUser?.uid || "";
 
 ---
 
@@ -619,7 +447,8 @@ const userId = authUser?.uid || "";
               </strong>
             </p>
             <div class="hero_body_prof_title">
-              <h2 id="project-name">{currentProject?.siteName || currentProject?.name}</h2>            
+              <h2 id="project-name" data-project-id={projectId}>{currentProject?.siteName || currentProject?.name}</h2>            
+              {/* <h2 id="project-name">{currentProject?.siteName || currentProject?.name}</h2>             */}
               <span class="item_action_btns">
                 <button>
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -835,6 +664,28 @@ const userId = authUser?.uid || "";
 </div>
 
 <input type="hidden" id="project-id-input" name="projectId" value="">
+
+{responseData && responseData.refreshNeeded && (
+  <script>
+    const urlParams = new URLSearchParams(window.location.search);
+    const currentTab = urlParams.get('tab');
+    if (currentTab === 'preview') {
+      window.location.reload();
+    }
+  </script>
+)}
+
+{redirectLocation && (
+  <script define:vars={{ url: redirectLocation }}>
+    window.location.href = url;
+  </script>
+)}
+
+{responseData && (
+  <script define:vars={{ data: responseData }}>
+    console.log('Response data:', data);
+  </script>
+)}
 
 <style lang="scss">
   .pan{
@@ -1432,7 +1283,7 @@ const userId = authUser?.uid || "";
 
 
 <script type="module">
-  // グローバル変数を追加
+  {/* // グローバル変数を追加 */}
   let tempBannerFile = null;
   let tempBannerPreview = null;
   let tempProfileFile = null;
@@ -1442,22 +1293,22 @@ const userId = authUser?.uid || "";
   let projectDescription = document.getElementById("project-description");
   let saveButton = document.getElementById("save-btn");
 
-  // クリックで編集可能にする
+  {/* // クリックで編集可能にする */}
   function enableEditing(element) {
     element.contentEditable = true;
     element.focus();
   }
 
-  // 編集完了後にエディットモードを終了
+  {/* // 編集完了後にエディットモードを終了 */}
   function disableEditing(element) {
     element.contentEditable = false;
   }
 
-  // クリック時に編集モード開始
+  {/* // クリック時に編集モード開始 */}
   if (projectName) projectName.addEventListener("click", () => enableEditing(projectName));
   if (projectDescription) projectDescription.addEventListener("click", () => enableEditing(projectDescription));
 
-  // 保存ボタンがクリックされたとき - ここを修正
+  {/* // 保存ボタンがクリックされたとき - ここを修正 */}
   if (saveButton) {
   saveButton.addEventListener("click", async () => {
       if (projectName) disableEditing(projectName);

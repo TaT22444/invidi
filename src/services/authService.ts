@@ -4,7 +4,7 @@ import { getCachedData } from '../utils/cache';
 /**
  * リクエストからユーザー情報を取得する
  */
-export async function getUserFromRequest(request: Request) {
+export async function getUserFromRequest(request: Request, providedFormData?: FormData | null) {
   try {
     const { auth, db } = getFirebaseAdmin();
     
@@ -19,7 +19,11 @@ export async function getUserFromRequest(request: Request) {
     const token = cookies["token"] || "";
     
     if (!token) {
-      return { user: null, error: "認証情報がありません" };
+      // POSTリクエストの場合は、フォームデータからCSRFトークンを確認
+      if (request.method === 'POST' && providedFormData) {
+        // フォームデータからのCSRF検証ロジック
+      }
+      return { user: null, error: new Error('No authentication token found') };
     }
     
     try {

@@ -9,6 +9,9 @@ interface CacheItem<T> {
 // シンプルなメモリキャッシュ
 const cache = new Map<string, CacheItem<any>>();
 
+// 自動キャッシュクリア用タイマー
+let autoClearInterval: NodeJS.Timeout | null = null;
+
 /**
  * キャッシュを用いてデータを取得する関数
  * @param key キャッシュキー
@@ -22,23 +25,23 @@ export async function getCachedData<T>(
 ): Promise<T> {
   const now = Date.now();
   const cachedItem = cache.get(key);
-  
+
   // キャッシュが有効な場合はキャッシュを返す
   if (cachedItem && cachedItem.expiry > now) {
     console.log(`Cache hit: ${key}`);
     return cachedItem.data as T;
   }
-  
+
   // キャッシュがない場合や期限切れの場合は新しく取得
   console.log(`Cache miss: ${key}`);
   const data = await fetcher();
-  
+
   // 取得したデータをキャッシュに保存
   cache.set(key, {
     data,
     expiry: now + (ttl * 1000)
   });
-  
+
   return data;
 }
 
@@ -67,4 +70,28 @@ export function invalidateCacheByPrefix(prefix: string): void {
  */
 export function clearCache(): void {
   cache.clear();
-} 
+}
+
+/**
+ * 一定間隔でキャッシュを全クリアする
+ * @param intervalMs クリアする間隔（ミリ秒）
+ */
+export function startAutoClearCache(intervalMs: number = 1000 * 60 * 10): void {
+  if (autoClearInterval) {
+    clearInterval(autoClearInterval);
+  }
+  autoClearInterval = setInterval(() => {
+    console.log("Auto-clearing cache...");
+    clearCache();
+  }, intervalMs);
+}
+
+/**
+ * 自動キャッシュクリアを停止する
+ */
+export function stopAutoClearCache(): void {
+  if (autoClearInterval) {
+    clearInterval(autoClearInterval);
+    autoClearInterval = null;
+  }
+}

@@ -5,6 +5,8 @@ interface Props {
   blogList: any[];
   existingBlogTags?: string[];
   csrfToken?: string; // CSRFトークンを追加
+  formData: FormData | null;
+  userId: string;
 }
 
 // プロパティを展開
@@ -12,8 +14,22 @@ const {
   projectId, 
   blogList = [], 
   existingBlogTags = [],
-  csrfToken = ""  // デフォルト値を設定
+  csrfToken = "",  // デフォルト値を設定
+  formData,
+  userId
 } = Astro.props;
+
+// リダイレクト情報やレスポンスデータを保存する変数
+let redirectLocation = null;
+let responseData = null;
+
+// formDataを使った処理
+if (formData && formData.get('action') === 'create_blog') {
+  // ブログ作成処理...
+  
+  // ✅ 代わりにリダイレクト情報を変数に保存
+  redirectLocation = `/projects/${projectId}/cms`;
+}
 ---
 
 <div class="cms_box cms-panel" id="blog-panel" style="display: none;">

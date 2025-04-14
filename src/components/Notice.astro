@@ -1,10 +1,20 @@
 ---
+import { getFirestoreDb } from "../lib/firebase-admin";
+import admin from "firebase-admin";
+
+import { getProjectProducts, getProductCategories } from "../services/productService";
+import { generateCSRFToken, getCSRFCookieHeader } from "../utils/csrf";
+import { getCookies } from "../lib/cookie-utils";
+
+
 // Propsの定義
 interface Props {
   projectId: string;
   noticeList: any[];
   existingTags?: string[];
-  csrfToken?: string; // CSRFトークンを追加
+  csrfToken?: string;
+  formData: FormData | null;
+  userId: string;
 }
 
 // プロパティを展開
@@ -12,8 +22,73 @@ const {
   projectId = "", 
   noticeList = [], 
   existingTags = [],
-  csrfToken = ""  // デフォルト値を設定
+  csrfToken = "",
+  formData,
+  userId
 } = Astro.props;
+
+// リダイレクト情報やレスポンスデータを保存する変数
+let redirectLocation = null;
+let responseData = null;
+
+// POSTリクエストの処理
+// if (Astro.request.method === "POST" && formData) {
+//   const action = formData.get("action")?.toString();
+
+//   if (action === "create_notice") {
+//     const db = getFirestoreDb();
+//     const title = formData.get("newsTitle")?.toString() || "";
+//     const body = formData.get("newsBody")?.toString() || "";
+//     const newsTags = formData.getAll("newsTags");
+//     const submitType = formData.get("submitType")?.toString() || "draft";
+//     const status = submitType === "publish" ? "public" : "draft";
+
+//     // Firestore へ追加
+//     const noticeRef = db
+//       .collection("projects")
+//       .doc(projectId)
+//       .collection("notice");
+
+//     await noticeRef.add({
+//       title: title,
+//       body: body,
+//       tags: newsTags,
+//       createdAt: new Date(),
+//       status: status,
+//     });
+
+//     // タグを更新
+//     if (newsTags.length > 0) {
+//       const projectDocRef = db.collection("projects").doc(projectId);
+//       await projectDocRef.update({
+//         newsTags: admin.firestore.FieldValue.arrayUnion(...newsTags),
+//       });
+//     }
+
+//     // ✅ 代わりにリダイレクト情報を変数に保存
+//     redirectLocation = `/projects/${projectId}/cms`;
+//   }
+
+//   // お知らせのステータス変更処理
+//   if (action === "update_notice_status") {
+//     const db = getFirestoreDb();
+//     const noticeId = formData.get("noticeId")?.toString();
+//     const status = formData.get("status")?.toString();
+
+//     if (noticeId && status) {
+//       await db.collection("projects")
+//         .doc(projectId)
+//         .collection("notice")
+//         .doc(noticeId)
+//         .update({
+//           status: status,
+//           updatedAt: admin.firestore.FieldValue.serverTimestamp()
+//         });
+
+//       redirectLocation = `/projects/${projectId}/cms`;
+//     }
+//   }
+// }
 ---
 
 <div class="cms_box cms-panel" id="notice-panel" style="display: block;">
@@ -820,3 +895,15 @@ const {
     }
   });
 </script>
+
+<div>
+  <!-- リダイレクトが必要な場合はJavaScriptでリダイレクト -->
+  {redirectLocation && (
+    <script define:vars={{ url: redirectLocation }}>
+      window.location.href = url;
+    </script>
+  )}
+  
+  <!-- 通常のコンテンツ -->
+  <!-- 残りのHTMLはそのまま -->
+</div>

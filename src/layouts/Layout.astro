@@ -149,7 +149,7 @@ import '../styles/global.scss';
 						</li>
 						<span class="span"></span>
 						<li class={`${isActive('/projects')}`}>
-							<button class="nav_link">
+							<!-- <button class="nav_link">
 								<svg width="16" height="16" viewBox="0 0 16 16" fill="none" 
 										 xmlns="http://www.w3.org/2000/svg">
 									<g clip-path="url(#clip0_685_4904)">
@@ -178,7 +178,7 @@ import '../styles/global.scss';
 									</clipPath>
 									</defs>
 								</svg>		
-							</button>
+							</button> -->
 							<ul class="nav_nst_list">
 								{projects && projects.length > 0 ? (
 									projects.map((project) => {
@@ -236,8 +236,10 @@ import '../styles/global.scss';
 			</div>
 		</aside>
 		<main class="main" id="main">
-			<slot />
-			<div class="space"></div>
+			<div class="main_inner">
+				<slot />
+			  <div class="space"></div>
+			</div>
 		</main>
 		<TokenRefresher client:load />
 		<script>
@@ -667,6 +669,18 @@ import '../styles/global.scss';
 		}
 	}
 
+	.project-badge {
+		display: flex;
+		justify-content: center;
+		align-items: center;
+		padding: 4px;
+		background-color: var(--accent-bg-color);
+		border-radius: var(--border-radius-s);
+		color: white;
+		font-size: var(--font-size-xs);
+		font-weight: 500;
+	}
+
 	.nav{
 		margin-top: 40px;
 
@@ -721,7 +735,6 @@ import '../styles/global.scss';
 				flex-direction: column;
 				gap: 4px;
 				justify-content: center;
-				margin-left: 8px;
 
 				>.active{
 					background-color: var(--elem-bg-color);
@@ -796,14 +809,23 @@ import '../styles/global.scss';
 
 	.main{
 		position: relative;
-		width: calc(100% - 264px);
-		max-width: 1400px;
-		margin-left: auto;
+		// width: 100%;
+		// width: calc(100% - 264px);
+		// max-width: 1400px;
+		// margin-left: auto;
+		margin-left: 272px;
 		padding: 8px 16px 0 8px;
 		transition: all 0.3s ease;
 
 		&.expanded {
 			width: calc(100% - 72px);
+			margin-left: 80px;
+		}
+
+		&_inner{
+			width: 100%;
+			max-width: 1400px;
+			margin-inline: auto;
 		}
 	}
 

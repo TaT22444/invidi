@@ -8,6 +8,12 @@ export interface Props {
   activeTab?: string;
 }
 
+interface TabInfo {
+  id: string;
+  label: string;
+  sectionId?: string;
+}
+
 const { projectId = '', activeTab = 'summary', project } = Astro.props;
 
 // projectIdがundefinedの場合に備えてデフォルト値を設定
@@ -32,12 +38,13 @@ const collections = await projectRef.listCollections();
 // コレクション名を取得してタブを生成
 const collectionTabs = collections.map((col: CollectionReference) => ({
   id: col.id,
+  sectionId: `${col.id}-container`,
   label: collectionLabels[col.id] || col.id
 }));
 
 // 常に表示する固定タブを追加
-const fixedTabs = [
-  { id: 'summary', label: 'サマリー' },
+const fixedTabs: TabInfo[] = [
+  { id: 'summary', label: 'サマリー' }
 ];
 
 // 固定タブとコレクションタブを結合
@@ -55,18 +62,83 @@ const allTabs = [...fixedTabs, ...collectionTabs];
     <ul class="preview_header_nav_list">
       {allTabs.map(tab => (
         <li class="nav_item">
-          <button
-            type="button"
-            class={`nav_link ${activeTab === tab.id ? 'active' : ''}`}
-            data-tab-id={tab.id}
-          >
-            {tab.label}
-          </button>
+          {tab.id === 'summary' ? (
+            <a
+              href="?tab=summary"
+              class={`nav_link ${activeTab === tab.id ? 'active' : ''}`}
+            >
+              {tab.label}
+            </a>
+          ) : (
+            <a
+              href={`?tab=preview#${tab.id}`}
+              class={`nav_link ${activeTab === tab.id ? 'active' : ''}`}
+              data-tab-id={tab.id}
+            >
+              {tab.label}
+            </a>
+          )}
         </li>
       ))}
     </ul>
   </nav>
 </header>
+
+<script>
+  document.addEventListener('DOMContentLoaded', function() {
+    const navLinks = document.querySelectorAll<HTMLAnchorElement>('a.nav_link:not([href="?tab=summary"])');
+    const isPreviewMode = new URL(window.location.href).searchParams.get('tab') === 'preview';
+    
+    if (!isPreviewMode) return;
+
+    navLinks.forEach(link => {
+      link.addEventListener('click', function(e) {
+        e.preventDefault();
+        const tabId = this.dataset.tabId;
+        if (!tabId) return;
+
+        // アクティブクラスの切り替え
+        document.querySelectorAll('.nav_link').forEach(link => {
+          link.classList.remove('active');
+        });
+        this.classList.add('active');
+
+        // URLを更新（ページ遷移なし）
+        const newUrl = `?tab=preview#${tabId}`;
+        window.history.pushState({}, '', newUrl);
+
+        // 対応するセクションにスクロール
+        const targetSection = document.querySelector(`.cms-container.${tabId}`);
+        if (targetSection) {
+          const header = document.querySelector<HTMLElement>('.preview_header');
+          const headerHeight = header ? header.offsetHeight : 0;
+          const sectionTop = targetSection.getBoundingClientRect().top + window.scrollY - headerHeight - 20;
+
+          window.scrollTo({
+            top: sectionTop,
+            behavior: 'smooth'
+          });
+        }
+      });
+    });
+
+    // ハッシュが存在する場合、初期スクロール
+    if (window.location.hash) {
+      const tabId = window.location.hash.substring(1);
+      const targetSection = document.querySelector(`.cms-container.${tabId}`);
+      if (targetSection) {
+        const header = document.querySelector<HTMLElement>('.preview_header');
+        const headerHeight = header ? header.offsetHeight : 0;
+        const sectionTop = targetSection.getBoundingClientRect().top + window.scrollY - headerHeight - 20;
+
+        window.scrollTo({
+          top: sectionTop,
+          behavior: 'smooth'
+        });
+      }
+    }
+  });
+</script>
 
 <style lang="scss">
 
@@ -279,3 +351,5 @@ const allTabs = [...fixedTabs, ...collectionTabs];
   }
 }
 </style>
+
+

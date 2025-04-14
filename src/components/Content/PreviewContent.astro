@@ -133,3 +133,43 @@ const userProjects = user.projects || [];
 </div>
 
 <script src="../../scripts/preview-client.js"></script>
+
+<script>
+  document.addEventListener('DOMContentLoaded', () => {
+    const updateBtn = document.querySelector('.preview_btn.update');
+    if (updateBtn) {
+      updateBtn.addEventListener('click', () => {
+        // タイムスタンプによるキャッシュバスティング
+        const timestamp = new Date().getTime();
+        console.log('プレビュー更新開始:', timestamp);
+        
+        // すべてのimg要素にタイムスタンプを付与
+        const images = document.querySelectorAll('.preview_inner img');
+        images.forEach(img => {
+          const src = img.src.split('?')[0];
+          img.src = `${src}?t=${timestamp}`;
+          console.log(`画像更新: ${src} -> ${img.src}`);
+        });
+        
+        // 更新成功メッセージ
+        updateBtn.textContent = '更新済み';
+        setTimeout(() => {
+          updateBtn.textContent = '更新';
+        }, 2000);
+      });
+    }
+    
+    // 閉じるボタン処理
+    const closeBtn = document.querySelector('.preview_btn.close');
+    if (closeBtn) {
+      closeBtn.addEventListener('click', () => {
+        // URLからプロジェクトIDを取得
+        const projectId = window.location.pathname.split('/').filter(Boolean)[1];
+        
+        // タブを保持してリダイレクト
+        const currentTab = document.querySelector('.tab.is-active')?.getAttribute('data-tab') || 'profile';
+        window.location.href = `/projects/${projectId}?tab=${currentTab}`;
+      });
+    }
+  });
+</script>

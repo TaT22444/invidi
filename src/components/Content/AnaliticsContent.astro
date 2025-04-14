@@ -106,7 +106,7 @@ const accountName = user.displayName || "ログイン";
     <StatsSummary 
       displayCount={totalStats.displayCount} 
       clickCount={totalStats.clickCount} 
-      ctr={totalStats.ctr}
+      ctr={totalStats.ctr} 
       id="search-performance-stats"
     />
     
@@ -135,93 +135,93 @@ const accountName = user.displayName || "ログイン";
 
 <!-- 各タブコンテンツを「tab-switch」クラスで管理し、初期状態を設定 -->
 <div class="container">
-  <!-- 検索パフォーマンスタブ -->
+<!-- 検索パフォーマンスタブ -->
   <div class="tab-switch" id="search-performance" style="display: block;">
-    <section class="contents">
-      <div class="section_title_wrapper">
-        <h3 class="section_title">サイト全体</h3>
-        <p class="section_period">{analyticsData.periodLabel}</p>
+  <section class="contents">
+    <div class="section_title_wrapper">
+      <h3 class="section_title">サイト全体</h3>
+      <p class="section_period">{analyticsData.periodLabel}</p>
+    </div>
+    <div class="box">
+      <div class="inner">
+        <PerformanceMetrics 
+          labels={analyticsData.chartData.labels}
+          displayData={analyticsData.chartData.displayData}
+          clickData={analyticsData.chartData.clickData}
+          ctrData={analyticsData.chartData.ctrData}
+          period="1w"
+        />
       </div>
-      <div class="box">
-        <div class="inner">
-          <PerformanceMetrics 
-            labels={analyticsData.chartData.labels}
-            displayData={analyticsData.chartData.displayData}
-            clickData={analyticsData.chartData.clickData}
-            ctrData={analyticsData.chartData.ctrData}
-            period="1w"
-          />
-        </div>
-      </div>
-    </section>
+    </div>
+  </section>
     <!-- 残りの検索パフォーマンスコンテンツ -->
-  </div>
+</div>
 
   <!-- ユーザータブ - 初期状態は非表示 -->
   <div class="tab-switch" id="users" style="display: none;">
-    <section class="contents">
-      <div class="section_title_wrapper">
-        <h3 class="section_title">ユーザー統計</h3>
-        <p class="section_period">{analyticsData.periodLabel}</p>
-      </div>
-      <div class="box">
-        <div class="inner">
-          <div class="wrapper">
-            <p class="graph_desc">ユニークユーザー数</p>
-            <p class="graph_value">135</p>
-          </div>
-          <MyLineChart
-            client:load
-            dataLabel="ユーザー数"
-            labels={analyticsData.chartData.labels}
-            dataPoints={analyticsData.chartData.displayData}
-            borderColor="#468FDD"
-            period={"1w"}
-          />
+  <section class="contents">
+    <div class="section_title_wrapper">
+      <h3 class="section_title">ユーザー統計</h3>
+      <p class="section_period">{analyticsData.periodLabel}</p>
+    </div>
+    <div class="box">
+      <div class="inner">
+        <div class="wrapper">
+          <p class="graph_desc">ユニークユーザー数</p>
+          <p class="graph_value">135</p>
         </div>
+        <MyLineChart
+          client:load
+          dataLabel="ユーザー数"
+          labels={analyticsData.chartData.labels}
+          dataPoints={analyticsData.chartData.displayData}
+          borderColor="#468FDD"
+            period={"1w"}
+        />
       </div>
-    </section>
-  </div>
+    </div>
+  </section>
+</div>
 
   <!-- ブログタブ - 初期状態は非表示 -->
   <div class="tab-switch" id="blog" style="display: none;">
-    <section class="contents">
-      <div class="section_title_wrapper">
-        <h3 class="section_title">ブログ統計</h3>
-        <p class="section_period">{analyticsData.periodLabel}</p>
-      </div>
-      <div class="box">
-        <div class="inner">
-          <div class="wrapper">
-            <p class="graph_desc">記事別アクセス数</p>
-            <p class="graph_value">87</p>
-          </div>
-          <MyLineChart
-            client:load
-            dataLabel="閲覧数"
-            labels={analyticsData.chartData.labels}
-            dataPoints={analyticsData.chartData.displayData}
-            borderColor="#468FDD"
-            period={"1w"}
-          />
+  <section class="contents">
+    <div class="section_title_wrapper">
+      <h3 class="section_title">ブログ統計</h3>
+      <p class="section_period">{analyticsData.periodLabel}</p>
+    </div>
+    <div class="box">
+      <div class="inner">
+        <div class="wrapper">
+          <p class="graph_desc">記事別アクセス数</p>
+          <p class="graph_value">87</p>
         </div>
+        <MyLineChart
+          client:load
+          dataLabel="閲覧数"
+          labels={analyticsData.chartData.labels}
+          dataPoints={analyticsData.chartData.displayData}
+          borderColor="#468FDD"
+            period={"1w"}
+        />
       </div>
-    </section>
-  </div>
+    </div>
+  </section>
+</div>
 
   <!-- 検索ランキングタブ - 初期状態は非表示 -->
   <div class="tab-switch" id="search-ranking" style="display: none;">
-    <section class="contents">
-      <div class="section_title_wrapper">
-        <h3 class="section_title">検索キーワードランキング</h3>
-        <p class="section_period">{analyticsData.periodLabel}</p>
+  <section class="contents">
+    <div class="section_title_wrapper">
+      <h3 class="section_title">検索キーワードランキング</h3>
+      <p class="section_period">{analyticsData.periodLabel}</p>
+    </div>
+    <div class="box">
+      <div class="inner">
+        <p>まだデータがありません</p>
       </div>
-      <div class="box">
-        <div class="inner">
-          <p>まだデータがありません</p>
-        </div>
-      </div>
-    </section>
+    </div>
+  </section>
   </div>
 </div>
 
@@ -681,7 +681,7 @@ const accountName = user.displayName || "ログイン";
   .contents{
     padding-top: 0;
     border-top: none;
-}
+  }
 </style>
 <!-- 既存のスクリプトを修正 -->
 <script>

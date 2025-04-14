@@ -21,19 +21,9 @@ function formatDate(date: Date): string {
 }
 ---
 
-<section class="cms-container blog-container">
+<section class="cms-container blog">
   <div class="inner">
     <h3 class="cms-container_title">ブログ</h3>
-    
-    <!-- {availableTags.length > 0 && (
-      <div class="tag-filter">
-        <div class="tag-list">
-          {availableTags.map((tag) => (
-            <span class="tag">{tag}</span>
-          ))}
-        </div>
-      </div>
-    )} -->
     
     <ul class="blog_list" data-has-more={hasMore.toString()}>
       {blogs.length > 0 ? (

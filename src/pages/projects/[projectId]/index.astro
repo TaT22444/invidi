@@ -32,94 +32,130 @@ if (!projectId) {
   return new Response(null, { status: 303, headers: { Location: "/" } });
 }
 
-// ユーザー認証
-const { user, error: authError } = await getUserFromRequest(Astro.request);
-if (authError || !user) {
-  return new Response(null, { status: 303, headers: { Location: "/" } });
-}
-
-// プロジェクトデータの取得
-const { project, error: projectError } = await getProjectData(projectId, user.uid);
-if (projectError || !project) {
-  console.error("プロジェクト取得エラー:", projectError);
-  return new Response(null, { status: 303, headers: { Location: "/" } });
-}
-
-// 統計情報の取得にフォールバックを追加
-const [statsResult, planData, followers] = await Promise.all([
-  getProjectStats(projectId).catch(err => {
-    console.error("統計情報の取得に失敗:", err);
-    return {
-      totalVisits: 540,
-      visitsData: { labels: ["1/1", "1/2", "1/3", "1/4", "1/5", "1/6", "1/7"], data: [75, 120, 90, 85, 65, 105, 0] },
-      totalSales: 3053082,
-      salesData: { labels: ["1/1", "1/2", "1/3", "1/4", "1/5", "1/6", "1/7"], data: [450000, 320000, 580000, 420000, 510000, 350000, 423082] }
-    };
-  }),
-  getProjectPlan(projectId).catch(() => ({
-    price: "無料",
-    dataUsage: { current: 12, max: 40 },
-    cms: { current: 1, max: 1 },
-    analytics: "過去1週間まで"
-  })),
-  getProjectFollowers(projectId).catch(() => 340)
-]);
-
-const stats = {
-  totalVisits: statsResult.totalVisits || 0,
-  visitsData: {
-    labels: Array.isArray(statsResult.visitsData?.labels) ? statsResult.visitsData.labels : [],
-    data: Array.isArray(statsResult.visitsData?.data) ? statsResult.visitsData.data : []
-  },
-  totalSales: statsResult.totalSales || 0,
-  salesData: {
-    labels: Array.isArray(statsResult.salesData?.labels) ? statsResult.salesData.labels : [],
-    data: Array.isArray(statsResult.salesData?.data) ? statsResult.salesData.data : []
+// POSTリクエストの場合だけformDataを読み取る
+let formData: FormData | null = null;
+if (Astro.request.method === 'POST') {
+  try {
+    formData = await Astro.request.formData();
+    console.log("フォームデータを取得しました:", formData.get('action'));
+  } catch (error) {
+    console.error("フォームデータ取得エラー:", error);
   }
-};
+}
 
-console.log("index.astro - グラフデータ:", {
-  visitsLabels: stats.visitsData.labels,
-  visitsData: stats.visitsData.data,
-  salesLabels: stats.salesData.labels,
-  salesData: stats.salesData.data
-});
+// ユーザー認証（formDataがある場合は渡す）
+const { user, error: authError } = await getUserFromRequest(Astro.request, formData);
 
-const pageTitle = project.name || "プロジェクト概要";
+// リダイレクト用の変数を定義
+let redirectToLogin = false;
+let redirectUrl = "/";
+
+if (authError || !user) {
+  redirectToLogin = true;
+}
+
+// リダイレクトが必要ない場合のみ、残りの処理を実行
+let project = null;
+let stats = { totalVisits: 0, visitsData: { labels: [], data: [] }, totalSales: 0, salesData: { labels: [], data: [] } };
+let commonProps = {};
+
+if (!redirectToLogin) {
+  // プロジェクトデータの取得
+  const projectResult = await getProjectData(projectId, user.uid);
+  if (projectResult.error || !projectResult.project) {
+    console.error("プロジェクト取得エラー:", projectResult.error);
+    redirectToLogin = true;
+  } else {
+    project = projectResult.project;
+    
+    // 統計情報の取得にフォールバックを追加
+    const [statsResult, planData, followers] = await Promise.all([
+      getProjectStats(projectId).catch(err => {
+        console.error("統計情報の取得に失敗:", err);
+        return {
+          totalVisits: 540,
+          visitsData: { labels: ["1/1", "1/2", "1/3", "1/4", "1/5", "1/6", "1/7"], data: [75, 120, 90, 85, 65, 105, 0] },
+          totalSales: 3053082,
+          salesData: { labels: ["1/1", "1/2", "1/3", "1/4", "1/5", "1/6", "1/7"], data: [450000, 320000, 580000, 420000, 510000, 350000, 423082] }
+        };
+      }),
+      getProjectPlan(projectId).catch(() => ({
+        price: "無料",
+        dataUsage: { current: 12, max: 40 },
+        cms: { current: 1, max: 1 },
+        analytics: "過去1週間まで"
+      })),
+      getProjectFollowers(projectId).catch(() => 340)
+    ]);
+
+    stats = {
+      totalVisits: statsResult.totalVisits || 0,
+      visitsData: {
+        labels: Array.isArray(statsResult.visitsData?.labels) ? statsResult.visitsData.labels : [],
+        data: Array.isArray(statsResult.visitsData?.data) ? statsResult.visitsData.data : []
+      },
+      totalSales: statsResult.totalSales || 0,
+      salesData: {
+        labels: Array.isArray(statsResult.salesData?.labels) ? statsResult.salesData.labels : [],
+        data: Array.isArray(statsResult.salesData?.data) ? statsResult.salesData.data : []
+      }
+    };
+
+    console.log("index.astro - グラフデータ:", {
+      visitsLabels: stats.visitsData.labels,
+      visitsData: stats.visitsData.data,
+      salesLabels: stats.salesData.labels,
+      salesData: stats.salesData.data
+    });
+
+    // 各コンポーネントに渡す共通プロパティを作成
+    commonProps = {
+      formData,
+      projectId,
+      userId: user.uid
+    };
+  }
+}
+
+// ページタイトルを設定（nullチェックを追加）
+const pageTitle = project?.name || "プロジェクト概要";
 ---
+{redirectToLogin && (
+  <script define:vars={{ url: redirectUrl }}>
+    window.location.href = url;
+  </script>
+)}
 
-<Layout title={pageTitle} userId={user.uid} accountName={user.displayName || "ログイン"} projects={user.projects || []}>
-
-
-  <div class="container">
-
-    {/* すべてのコンテンツは既に用意されており、表示/非表示の切り替えがcurrentTabに基づいて行われています */}
-    <div class="tab-content" data-tab-id="summary" style={currentTab === 'summary' ? 'display:block' : 'display:none'}>
-      <SummaryContent />
+{!redirectToLogin && (
+  <Layout title={pageTitle} userId={user.uid} accountName={user.displayName || "ログイン"} projects={user.projects || []}>
+    <div class="container">
+      {/* すべてのコンテンツは既に用意されており、表示/非表示の切り替えがcurrentTabに基づいて行われています */}
+      <div class="tab-content" data-tab-id="summary" style={currentTab === 'summary' ? 'display:block' : 'display:none'}>
+        <SummaryContent {...commonProps} />
+      </div>
+      
+      <div class="tab-content" data-tab-id="profile" style={currentTab === 'profile' ? 'display:block' : 'display:none'}>
+        <ProfileContent {...commonProps} />
+      </div>
+      
+      <div class="tab-content" data-tab-id="cms" style={currentTab === 'cms' ? 'display:block' : 'display:none'}>
+        <CmsContent {...commonProps} />
+      </div>
+      
+      <div class="tab-content" data-tab-id="form" style={currentTab === 'form' ? 'display:block' : 'display:none'}>
+        <FormContent {...commonProps} />
+      </div>
+      
+      <div class="tab-content" data-tab-id="analytics" style={currentTab === 'analytics' ? 'display:block' : 'display:none'}>
+        <AnaliticsContent {...commonProps} />
+      </div>
+      
+      <div class="tab-content" data-tab-id="preview" style={currentTab === 'preview' ? 'display:block' : 'display:none'}>
+        <PreviewContent {...commonProps} />
+      </div>
     </div>
-    
-    <div class="tab-content" data-tab-id="profile" style={currentTab === 'profile' ? 'display:block' : 'display:none'}>
-      <ProfileContent />
-    </div>
-    
-    <div class="tab-content" data-tab-id="cms" style={currentTab === 'cms' ? 'display:block' : 'display:none'}>
-      <CmsContent />
-    </div>
-    
-    <div class="tab-content" data-tab-id="form" style={currentTab === 'form' ? 'display:block' : 'display:none'}>
-      <FormContent />
-    </div>
-    
-    <div class="tab-content" data-tab-id="analytics" style={currentTab === 'analytics' ? 'display:block' : 'display:none'}>
-      <AnaliticsContent />
-    </div>
-    
-    <div class="tab-content" data-tab-id="preview" style={currentTab === 'preview' ? 'display:block' : 'display:none'}>
-      <PreviewContent />
-    </div>
-  </div>
-  
-</Layout>
+  </Layout>
+)}
 
 <style lang="scss">
 
@@ -142,8 +178,7 @@ const pageTitle = project.name || "プロジェクト概要";
 .tab-content{
   position: relative;
   width: 100%;
-  // width: calc(100% - 264px);
-  // margin-left: auto;
+  margin-inline: auto;
 }
 
 .container{
