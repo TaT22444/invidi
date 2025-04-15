@@ -148,6 +148,7 @@ if (Astro.request.method === "POST") {
   
   {/* プラン情報コンポーネント（フリープランの場合のみ表示） */}
   {planName === "free" && (
+    
     <PlanInfo
       planName={planName}
       projectCount={projects.length}

@@ -10,6 +10,10 @@ import CreateProjectModal from "../../components/dashboard/CreateProjectModal.as
 // Firebase認証とサービスのインポート
 import { getFirebaseAdmin } from "../../lib/firebase-admin";
 import { getUserData, getUserDataUsage, createProject, deleteProject } from "../../services/dashboardService";
+// CSRF関連のインポートを追加
+import { generateCSRFToken, getCSRFCookieHeader } from "../../utils/csrf";
+import { invalidateCacheByPrefix } from "../../utils/cache"; 
+import { changeUserPlan } from "../../services/planService";
 
 // URLパラメータからuserIdを取得
 const { userId } = Astro.params;
@@ -63,6 +67,12 @@ const planName = userData.plan || "free";
 
 // エラーメッセージ初期化
 let postError = "";
+let successMessage = "";
+
+// 成功メッセージの取得
+if (Astro.url.searchParams.get('success') === 'true') {
+  successMessage = "プランの変更が完了しました";
+}
 
 // POSTメソッド時の処理
 if (Astro.request.method === "POST") {
@@ -127,18 +137,31 @@ if (Astro.request.method === "POST") {
 
   // 4. プラン変更
   else if (action === "change_plan") {
-    const newPlan = formData.get("plan")?.toString() || "";
-    
-    if (newPlan) {
-      // ここでプラン変更のロジックを実装
-      // 実際のシステムでは決済処理なども行う
+  const newPlan = formData.get("plan")?.toString() || "";
+  const csrfToken = formData.get("csrf_token")?.toString() || "";
+  
+  if (newPlan === "free" || newPlan === "pro") {
+    try {
+      // プラン変更を実行
+      await changeUserPlan(userId, newPlan as 'free' | 'pro');
+      
+      // キャッシュを無効化
+      invalidateCacheByPrefix(`user:${userId}`);
       
       return new Response(null, {
         status: 303,
-        headers: { Location: `/${userId}/plan?success=true` },
+        headers: { 
+          Location: `/${userId}/plan?success=true` 
+        }
       });
+    } catch (error) {
+      console.error("プラン変更エラー:", error);
+      postError = error instanceof Error ? error.message : "プラン変更に失敗しました";
     }
+  } else {
+    postError = "無効なプラン種別です";
   }
+} 
 }
 
 // 現在のプランに関する情報
@@ -186,7 +209,8 @@ const billingCycle = Astro.url.searchParams.get('cycle') || 'monthly';
   accountName={userData.displayName}
   projects={projects}
 >
-  {postError && <p class="error-message">{postError}</p>}
+  {postError && <div class="error-message">{postError}</div>}
+  {successMessage && <div class="success-message">{successMessage}</div>}
   
   <div class="pan">
     <p class="pan_item">
@@ -267,12 +291,13 @@ const billingCycle = Astro.url.searchParams.get('cycle') || 'monthly';
           <form method="POST" class="plan-action">
             <input type="hidden" name="action" value="change_plan">
             <input type="hidden" name="plan" value="free">
+            <input type="hidden" name="csrf_token" value={generateCSRFToken()}>
             <button type="submit" class="plan-btn downgrade">ダウングレード</button>
           </form>
         )}
       </div>
       
-      <!-- プロプラン -->
+      {/* <!-- プロプラン --> */}
       <div class={`plan-card ${!currentPlanIsFree ? 'current-plan' : ''}`}>
         <div class="plan-header">
           <h2 class="plan-name">{plans.pro.name}</h2>
@@ -322,9 +347,10 @@ const billingCycle = Astro.url.searchParams.get('cycle') || 'monthly';
           <form method="POST" class="plan-action">
             <input type="hidden" name="action" value="change_plan">
             <input type="hidden" name="plan" value="pro">
+            <input type="hidden" name="csrf_token" value={generateCSRFToken()}>
             <button type="submit" class="plan-btn upgrade">選択</button>
           </form>
-        )}
+        )} 
       </div>
     </div>
     
@@ -334,16 +360,41 @@ const billingCycle = Astro.url.searchParams.get('cycle') || 'monthly';
         <div class="usage-item">
           <span class="usage-label">ストレージ使用量:</span>
           <div class="usage-bar">
-            <div class="usage-progress" style={`width: ${(dataUsage.storage / (currentPlanIsFree ? 40 : 2048)) * 100}%`}></div>
+            <div class="usage-progress" style={`width: ${dataUsage.usagePercentage.storage}%`}></div>
           </div>
           <span class="usage-value">{dataUsage.storage}MB / {currentPlanIsFree ? '40MB' : '2GB'}</span>
         </div>
+        
         <div class="usage-item">
           <span class="usage-label">プロジェクト数:</span>
           <div class="usage-bar">
-            <div class="usage-progress" style={`width: ${(projects.length / (currentPlanIsFree ? 3 : 5)) * 100}%`}></div>
+            <div class="usage-progress" style={`width: ${dataUsage.usagePercentage.projects}%`}></div>
           </div>
           <span class="usage-value">{projects.length} / {currentPlanIsFree ? '3' : '5'}</span>
+        </div>
+        
+        <div class="usage-item">
+          <span class="usage-label">CMS項目数:</span>
+          <div class="usage-bar">
+            <div class="usage-progress" style={`width: ${dataUsage.usagePercentage.cmsItems}%`}></div>
+          </div>
+          <span class="usage-value">{dataUsage.cmsItems} / {currentPlanIsFree ? '2' : '5'}</span>
+        </div>
+        
+        <div class="usage-item">
+          <span class="usage-label">ページ数:</span>
+          <div class="usage-bar">
+            <div class="usage-progress" style={`width: ${dataUsage.usagePercentage.pages}%`}></div>
+          </div>
+          <span class="usage-value">{dataUsage.pages} / {currentPlanIsFree ? '2' : '10'}</span>
+        </div>
+        
+        <div class="usage-item">
+          <span class="usage-label">今月のフォーム送信数:</span>
+          <div class="usage-bar">
+            <div class="usage-progress" style={`width: ${dataUsage.usagePercentage.formSubmissions}%`}></div>
+          </div>
+          <span class="usage-value">{dataUsage.formSubmissions} / {currentPlanIsFree ? '10' : '100'}</span>
         </div>
       </div>
     </div>
@@ -596,6 +647,28 @@ const billingCycle = Astro.url.searchParams.get('cycle') || 'monthly';
       .usage-value {
         text-align: left !important;
       }
+    }
+  }
+  
+  .success-message {
+    color: var(--success-color, #4CAF50);
+    margin-bottom: 16px;
+    padding: 8px 16px;
+    background-color: var(--success-bg-color, #E8F5E9);
+    border-radius: var(--border-radius-s);
+  }
+  
+  .usage-progress {
+    &[style*="width: 100%"] {
+      background-color: var(--error-color, #f44336);
+    }
+    
+    &[style*="width: 8"] {
+      background-color: var(--warning-color, #ff9800);
+    }
+    
+    &[style*="width: 9"] {
+      background-color: var(--warning-color, #ff9800);
     }
   }
 </style>

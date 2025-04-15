@@ -1,20 +1,31 @@
 /**
  * ダッシュボード画面で使用するデータを取得するサービス
  */
-import { getCachedData } from '../utils/cache';
-import { getFirestoreDb } from '../lib/firebase-admin';
+import { clearCache, getCachedData, invalidateCacheByPrefix } from '../utils/cache';
+import { getFirebaseAdmin } from '../lib/firebase-admin';
+import { getUserResourceUsage, PLAN_LIMITS } from "./planService";
+
+// 以下のUserDataインターフェースを追加
+interface UserData {
+  uid: string;
+  displayName: string;
+  projects: any[]; // プロジェクト型に合わせて定義
+  plan: 'free' | 'pro';
+  email: string;
+  createdAt: any; // Timestampなどの適切な型
+}
 
 /**
  * ユーザーIDからユーザーデータを取得する
  * @param userId ユーザーID
  */
-export async function getUserData(userId: string) {
+export async function getUserData(userId: string): Promise<UserData> {
   const cacheKey = `user:${userId}`;
   
   return await getCachedData(
     cacheKey,
     async () => {
-      const db = getFirestoreDb();
+      const db = getFirebaseAdmin().db;
       const userSnap = await db.collection('users').doc(userId).get();
       
       if (!userSnap.exists) {
@@ -28,7 +39,7 @@ export async function getUserData(userId: string) {
         uid: userId,
         displayName: userData?.displayName || 'ログイン',
         projects: userData?.projects || [],
-        plan: userData?.plan || 'free',
+        plan: (userData?.plan || 'free') as 'free' | 'pro',
         email: userData?.email || '',
         createdAt: userData?.createdAt || null,
       };
@@ -38,24 +49,65 @@ export async function getUserData(userId: string) {
 }
 
 /**
- * ユーザーのデータ使用量を取得する（サンプル実装）
+ * ユーザーのリソース使用状況を取得する関数
  * @param userId ユーザーID
  */
 export async function getUserDataUsage(userId: string) {
-  const cacheKey = `dataUsage:${userId}`;
-  
-  return await getCachedData(
-    cacheKey,
-    async () => {
-      // 実際には計算ロジックを実装する（例：Storageデータサイズ + Firestoreドキュメント数など）
-      // 今回はサンプルデータを返す
-      return {
-        current: 24, // GB
-        max: 124, // GB
-      };
-    },
-    300 // 5分キャッシュ
-  );
+  try {
+    console.log(`getUserDataUsage(${userId}): 開始`);
+    
+    // リソース使用状況を取得
+    const resourceUsage = await getUserResourceUsage(userId);
+    
+    // ユーザー情報を取得してプランを確認
+    const db = getFirebaseAdmin().db;
+    const userDoc = await db.collection("users").doc(userId).get();
+    const planName = (userDoc.data()?.plan || "free") as 'free' | 'pro';
+    
+    // プラン情報を取得
+    const planLimits = PLAN_LIMITS[planName];
+    
+    // 安全な除算のためのヘルパー関数
+    const safePercent = (current: number, max: number) => {
+      if (!max || max <= 0 || !current || current < 0) return 0;
+      return Math.min(100, Math.round((current / max) * 100));
+    };
+    
+    const result = {
+      ...resourceUsage,
+      planName,
+      planLimits,
+      usagePercentage: {
+        storage: safePercent(resourceUsage.storage, planLimits.storage),
+        projects: safePercent(resourceUsage.projectsCount, planLimits.projects),
+        cmsItems: safePercent(resourceUsage.cmsItems, planLimits.cmsItems),
+        pages: safePercent(resourceUsage.pages, planLimits.pages),
+        formSubmissions: safePercent(resourceUsage.formSubmissions, planLimits.formSubmissions)
+      }
+    };
+    
+    console.log(`getUserDataUsage(${userId}) 結果:`, result);
+    
+    return result;
+  } catch (error) {
+    console.error("データ使用量の取得に失敗:", error);
+    return {
+      storage: 0,
+      pages: 0,
+      cmsItems: 0,
+      formSubmissions: 0,
+      projectsCount: 0,
+      planName: "free" as const,
+      planLimits: PLAN_LIMITS.free,
+      usagePercentage: {
+        storage: 0,
+        projects: 0,
+        cmsItems: 0,
+        pages: 0,
+        formSubmissions: 0
+      }
+    };
+  }
 }
 
 /**
@@ -71,9 +123,20 @@ export async function createProject(
   projectDescription: string,
   planName: string
 ) {
-  const db = getFirestoreDb();
+  const db = getFirebaseAdmin().db;
   
   try {
+    // 制限チェック
+    const { checkProjectLimit } = await import('../middleware/planLimits');
+    const checkResult = await checkProjectLimit(userId);
+    
+    if (!checkResult.allowed) {
+      return { 
+        success: false, 
+        error: `プロジェクト数の上限に達しています（${checkResult.current}/${checkResult.limit}）。プランをアップグレードするとより多くのプロジェクトを作成できます。` 
+      };
+    }
+    
     // トランザクションを使用して、ユーザーデータとプロジェクトデータを一貫して更新する
     return await db.runTransaction(async (transaction) => {
       // ユーザードキュメントを取得
@@ -84,33 +147,8 @@ export async function createProject(
         throw new Error('ユーザーデータが見つかりません');
       }
       
-      const userData = userSnap.data();
-      const currentProjects = userData?.projects || [];
-      
-      // プラン制限をチェック
-      if (planName === 'free' && currentProjects.length >= 1) {
-        throw new Error('フリープランでは1つまでしかプロジェクトを作成できません');
-      }
-      
-      // 新規プロジェクトIDを生成（UUIDが必要な場合は別途インポート）
-      const projectId = Date.now().toString();
-      
-      // 新規プロジェクトデータ
-      const newProject = {
-        id: projectId,
-        name: projectName,
-        description: projectDescription,
-        followers: 0,
-        currentPages: 0,
-        maxPages: planName === 'free' ? 3 : 10,
-        createdAt: new Date(),
-        ownerId: userId,
-        allTags: [],
-      };
-      
-      // ユーザードキュメントのprojects配列を更新
-      currentProjects.push(newProject);
-      transaction.update(userRef, { projects: currentProjects });
+      // 新しいプロジェクトIDを生成
+      const projectId = db.collection('projects').doc().id;
       
       // プロジェクトコレクションに新規ドキュメントを作成
       const projectRef = db.collection('projects').doc(projectId);
@@ -126,33 +164,40 @@ export async function createProject(
         currentPages: 0,
         maxPages: planName === 'free' ? 3 : 10,
         ownerId: userId,
+        storageUsage: 0, // ストレージ使用量を0で初期化
       });
       
-      // 必要に応じてサブコレクションを初期化
-      const initBlogs = projectRef.collection('blog').doc('init');
-      transaction.set(initBlogs, {
-        title: 'サンプルブログ',
-        content: 'これは初期作成されたサンプル投稿です',
-        createdAt: new Date(),
-      });
+      // ユーザードキュメントのprojects配列に追加
+      const userData = userSnap.data();
+      const currentProjects = userData?.projects || [];
       
-      const initNotices = projectRef.collection('notice').doc('init');
-      transaction.set(initNotices, {
-        title: 'サンプルお知らせ',
-        content: 'これは初期作成されたサンプルお知らせです',
-        createdAt: new Date(),
+      // 新しいプロジェクト情報
+      const projectInfo = {
+        id: projectId,
+        name: projectName,
+        description: projectDescription,
+        createdAt: new Date()
+      };
+      
+      // projects配列を更新
+      transaction.update(userRef, {
+        projects: [...currentProjects, projectInfo]
       });
       
       // キャッシュを無効化
-      import('../utils/cache').then(cache => {
-        cache.invalidateCache(`user:${userId}`);
-      });
+      invalidateCacheByPrefix(`user:${userId}`);
       
-      return { success: true, projectId };
+      return {
+        success: true,
+        projectId
+      };
     });
-  } catch (error) {
+  } catch (error: unknown) {
     console.error('プロジェクト作成エラー:', error);
-    return { success: false, error: error.message };
+    return { 
+      success: false, 
+      error: error instanceof Error ? error.message : String(error) 
+    };
   }
 }
 
@@ -162,7 +207,7 @@ export async function createProject(
  * @param projectId プロジェクトID
  */
 export async function deleteProject(userId: string, projectId: string) {
-  const db = getFirestoreDb();
+  const db = getFirebaseAdmin().db;
   
   try {
     // トランザクションを使用して、ユーザーデータとプロジェクトデータを一貫して更新する
@@ -179,7 +224,7 @@ export async function deleteProject(userId: string, projectId: string) {
       const currentProjects = userData?.projects || [];
       
       // 指定されたプロジェクトを除外
-      const updatedProjects = currentProjects.filter(p => p.id !== projectId);
+      const updatedProjects = currentProjects.filter((p: any) => p.id !== projectId);
       
       // ユーザードキュメントを更新
       transaction.update(userRef, { projects: updatedProjects });
@@ -190,14 +235,21 @@ export async function deleteProject(userId: string, projectId: string) {
       transaction.delete(projectRef);
       
       // キャッシュを無効化
-      import('../utils/cache').then(cache => {
-        cache.invalidateCache(`user:${userId}`);
-      });
+      invalidateCacheByPrefix(`user:${userId}`);
       
       return { success: true };
     });
-  } catch (error) {
+  } catch (error: unknown) {
     console.error('プロジェクト削除エラー:', error);
-    return { success: false, error: error.message };
+    return { success: false, error: error instanceof Error ? error.message : String(error) };
   }
 } 
+
+// アプリケーション起動時にキャッシュをクリアする
+export function clearCacheOnStartup() {
+  console.log("アプリケーション起動時のキャッシュクリア実行中...");
+  clearCache();
+}
+
+// 自動実行
+clearCacheOnStartup(); 

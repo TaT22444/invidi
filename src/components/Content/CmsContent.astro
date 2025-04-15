@@ -43,6 +43,7 @@ const { formData, projectId, userId } = Astro.props;
 // 既存のインポート
 import LoadingOverlay from "../../components/common/LoadingOverlay.astro";
 import Notification from "../../components/common/Notification.astro";
+import { uploadImageAndTrackUsage } from "../../utils/uploadHelper";
 
 function formatCreatedAt(createdAt: string | number | Date) {
   if (!createdAt) return "日付未設定";

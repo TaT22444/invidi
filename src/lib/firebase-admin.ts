@@ -1,13 +1,18 @@
 import admin from "firebase-admin";
 import { getFirestore } from "firebase-admin/firestore";
 import { getAuth } from "firebase-admin/auth";
+import { getStorage } from "firebase-admin/storage";
 
 /**
  * Firebase Admin SDK のシングルトンインスタンスを取得する
  */
 export function initializeFirebaseAdmin() {
   if (admin.apps.length > 0) {
-    return { db: getFirestore(), auth: getAuth() };
+    return { 
+      db: getFirestore(), 
+      auth: getAuth(),
+      storage: getStorage()
+    };
   }
 
   try {
@@ -22,12 +27,26 @@ export function initializeFirebaseAdmin() {
     
     const serviceAccount = JSON.parse(serviceAccountStr);
     
+    // ストレージバケット名を確実に取得
+    const storageBucket = 
+      process.env.FIREBASE_STORAGE_BUCKET || 
+      (typeof import.meta !== 'undefined' ? import.meta.env.FIREBASE_STORAGE_BUCKET : undefined) ||
+      "test-87192.appspot.com"; // デフォルト値を設定
+    
+    console.log(`Initializing Firebase with storage bucket: ${storageBucket}`);
+    
     admin.initializeApp({
       credential: admin.credential.cert(serviceAccount),
+      storageBucket: storageBucket
     });
     
     console.log("Firebase Admin initialized successfully");
-    return { db: getFirestore(), auth: getAuth() };
+    
+    return { 
+      db: getFirestore(), 
+      auth: getAuth(),
+      storage: getStorage()
+    };
   } catch (error) {
     console.error("Failed to initialize Firebase Admin:", error);
     throw error;

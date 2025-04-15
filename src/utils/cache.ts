@@ -61,6 +61,7 @@ export function invalidateCacheByPrefix(prefix: string): void {
   for (const key of cache.keys()) {
     if (key.startsWith(prefix)) {
       cache.delete(key);
+      console.log(`Cache invalidated: ${key}`);
     }
   }
 }
@@ -70,6 +71,7 @@ export function invalidateCacheByPrefix(prefix: string): void {
  */
 export function clearCache(): void {
   cache.clear();
+  console.log("Cache cleared");
 }
 
 /**
@@ -95,3 +97,12 @@ export function stopAutoClearCache(): void {
     autoClearInterval = null;
   }
 }
+
+// アプリケーション起動時にキャッシュをクリアする
+export function clearCacheOnStartup() {
+  console.log("アプリケーション起動時のキャッシュクリア実行中...");
+  clearCache();
+}
+
+// 自動実行
+clearCacheOnStartup();

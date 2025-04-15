@@ -246,7 +246,6 @@ if (formData && formData.get('action') === 'update_project_banner') {
 
       responseData = { success: true };
       invalidateCacheByPrefix(`project:${projectIdFromForm}`);
-      
     } catch (error) {
       console.error("プロジェクト情報の更新に失敗しました:", error);
       responseData = { error: "更新に失敗しました" };
