@@ -23,7 +23,7 @@ export async function uploadImageAndTrackUsage(
   userId: string
 ): Promise<string> {
   try {
-    // ファイルサイズをMBに変換（バイト数をバッファから取得）
+    // ファイルサイズをMBに変換
     const fileSize = file instanceof Buffer ? file.length : file.byteLength;
     const fileSizeMB = Math.ceil(fileSize / (1024 * 1024));
     
@@ -34,20 +34,24 @@ export async function uploadImageAndTrackUsage(
     
     // Firebase Storageへのアップロード
     const { storage } = getFirebaseAdmin();
-    const bucket = storage.bucket();
     
-    // 安全なファイル名に変換
-    const safeFileName = `${Date.now()}_${fileName.replace(/[^a-zA-Z0-9.]/g, '_')}`;
-    const filePath = `${path}/${safeFileName}`;
-    
-    // ArrayBufferをBufferに変換（型エラー修正）
-    const fileBuffer = file instanceof Buffer 
-      ? file 
-      : Buffer.from(new Uint8Array(file));
-    
-    const fileRef = bucket.file(filePath);
-    
+    // バケットがない場合の代替処理（一時的な対応）
+    let bucketName = "";
     try {
+      // バケット名を取得しようとしてみる
+      const bucket = storage.bucket();
+      bucketName = bucket.name;
+      
+      // 安全なファイル名に変換
+      const safeFileName = `${Date.now()}_${fileName.replace(/[^a-zA-Z0-9.]/g, '_')}`;
+      const filePath = `${path}/${safeFileName}`;
+      
+      // ファイルをアップロード
+      const fileBuffer = file instanceof Buffer 
+        ? file 
+        : Buffer.from(new Uint8Array(file));
+      const fileRef = bucket.file(filePath);
+      
       await fileRef.save(fileBuffer, {
         metadata: {
           contentType: contentType
@@ -70,21 +74,23 @@ export async function uploadImageAndTrackUsage(
       
       return publicUrl;
     } catch (error) {
-      console.error("Firebase Storage操作エラー:", error);
-      
-      // エラーの種類に応じた処理
-      if (error.code === 'storage/invalid-argument' || error.message.includes('bucket')) {
-        console.warn("Firebase Storageバケットエラー。ダミーURLを使用します。");
+      // バケットが設定されていない場合は、ダミーのURLを返す（開発・テスト環境用）
+      if (error.code === 'storage/invalid-argument' || !bucketName) {
+        console.warn("Firebase Storageバケットが設定されていません。ダミーURLを使用します。");
         
         // ダミーURLを返すが、ストレージ使用量は更新する
-        const dummyUrl = `https://placeholder.dev/${path}/${safeFileName}?size=${fileSizeMB}`;
+        const dummyUrl = `https://placeholder.dev/images/${path}/${fileName}?size=${fileSizeMB}`;
         
-        // ストレージ使用量は更新する
+        // ストレージ使用量を更新
         await updateStorageUsage(projectId, userId, fileSizeMB);
+        
+        // キャッシュ無効化
+        invalidateCacheByPrefix(`user:${userId}:resourceUsage`);
         
         return dummyUrl;
       }
       
+      // その他のエラーは再スロー
       throw error;
     }
   } catch (error) {

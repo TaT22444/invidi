@@ -4,21 +4,13 @@ import Layout from '../../layouts/Layout.astro';
 import '../../styles/profile.scss';
 import ProjectNav from '../../components/ProjectNav.astro';
 import { invalidateCacheByPrefix } from '../../utils/cache';
+import { uploadImageAndTrackUsage } from "../../utils/uploadHelper";
+import { getFirebaseAdmin } from "../../lib/firebase-admin";
+import { updateStorageUsage } from "../../services/planService";
+import { checkStorageLimit } from "../../middleware/planLimits";
 
-import admin from "firebase-admin";
-// Firebase Admin SDK の初期化（初回のみ実施）
-if (!admin.apps.length) {
-  const serviceAccountStr =
-    process.env.FIREBASE_SERVICE_ACCOUNT || import.meta.env.FIREBASE_SERVICE_ACCOUNT;
-  console.log("Service Account:", serviceAccountStr);
-  const serviceAccount = JSON.parse(serviceAccountStr!);
-  
-  admin.initializeApp({
-    credential: admin.credential.cert(serviceAccount),
-  });
-}
-const adminAuth = admin.auth();
-const db = admin.firestore();
+// Firebaseクライアントを取得
+const { db, auth, storage } = getFirebaseAdmin();
 
 // Cookie ヘッダーから "token" をパースする
 const cookieHeader = Astro.request.headers.get("cookie") || "";
@@ -33,7 +25,7 @@ let authUser = null;
 if (token) {
   try {
     // 第二引数にfalseを追加して、チェックを緩和
-    authUser = await adminAuth.verifyIdToken(token, false);
+    authUser = await auth.verifyIdToken(token, false);
     
     // 以下のような警告ログを追加するとよい（任意）
     const tokenIssuedAt = authUser.iat * 1000; // UNIX時間（秒）をミリ秒に変換
@@ -76,36 +68,54 @@ const { formData, projectId, userId } = Astro.props;
 let redirectLocation = null;
 let responseData = null;
 
-// 代わりに、渡されたformDataを使用する
+// バナー画像のアップロード処理
 if (formData && formData.get('action') === 'update_project_banner') {
-  const bannerImage = formData.get("bannerImage");
+  const bannerFile = formData.get("bannerImage");
   const projectIdFromForm = formData.get("projectId")?.toString();
-  const siteName = formData.get('siteName')?.toString() || '';
-  const description = formData.get('description')?.toString() || '';
   
-  if (bannerImage && bannerImage instanceof File && projectIdFromForm) {
+  if (bannerFile && bannerFile instanceof File && projectIdFromForm && authUser) {
     try {
-      // バケット名を明示的に指定
-      const bucket = process.env.FIREBASE_STORAGE_BUCKET || "test-87192.firebasestorage.app";
-      const storageRef = admin.storage().bucket(bucket);
+      console.log("バナー画像のアップロード開始...");
       
-      const fileRef = storageRef.file(`projects/${projectIdFromForm}/banner/${Date.now()}_${bannerImage.name}`);
+      // ファイルサイズのチェック
+      const fileSize = bannerFile.size;
+      const fileSizeMB = Math.ceil(fileSize / (1024 * 1024));
       
-      // 残りのコードはそのまま
-      const buffer = Buffer.from(await bannerImage.arrayBuffer());
+      console.log(`バナー画像サイズ: ${fileSizeMB}MB`);
       
+      // ストレージ制限をチェック
+      await checkStorageLimit(authUser.uid, fileSize);
+      
+      // バケット名を明示的に指定してStorageを初期化
+      const { storage } = getFirebaseAdmin(); // storageを再取得
+      const bucket = storage.bucket();
+      
+      // 安全なファイル名に変換（日時プレフィックスと特殊文字の除去）
+      const timestamp = Date.now();
+      const safeFileName = `${timestamp}_${bannerFile.name.replace(/[^a-zA-Z0-9.]/g, '_')}`;
+      const filePath = `projects/${projectIdFromForm}/banner/${safeFileName}`;
+      
+      // ファイルデータをBufferに変換
+      const buffer = Buffer.from(await bannerFile.arrayBuffer());
+      
+      // ファイルをアップロード
+      const fileRef = bucket.file(filePath);
       await fileRef.save(buffer, {
         metadata: {
-          contentType: bannerImage.type
+          contentType: bannerFile.type
         }
       });
       
-      // 公開URLを取得
-      const [url] = await fileRef.getSignedUrl({
-        action: "read",
-        expires: "03-01-2500"
-      });
+      // ファイルを公開
+      await fileRef.makePublic();
       
+      // 公開URLを取得
+      const url = `https://storage.googleapis.com/${bucket.name}/${filePath}`;
+      
+      console.log("バナー画像のアップロード完了:", url);
+      
+      // ストレージ使用量を更新
+      await updateStorageUsage(projectIdFromForm, authUser.uid, fileSizeMB);
       
       // Firestoreにバナー画像URLを保存
       const projectRef = db.collection("projects").doc(projectIdFromForm);
@@ -115,52 +125,77 @@ if (formData && formData.get('action') === 'update_project_banner') {
       
       // ユーザーのprojects配列内の該当プロジェクトも更新
       if (userData && userData.projects) {
-        const updatedProjects = userData.projects.map((p) => {
+        const updatedProjects = userData.projects.map((p: any) => {
           if (p.id === projectIdFromForm) {
             return { ...p, bannerUrl: url };
           }
           return p;
         });
         
-        await db.collection("users").doc(authUser.uid).update({
-          projects: updatedProjects
-        });
+        if (authUser) {
+          await db.collection("users").doc(authUser.uid).update({
+            projects: updatedProjects
+          });
+        }
       }
+      
+      // キャッシュを無効化
+      invalidateCacheByPrefix(`user:${authUser.uid}:resourceUsage`);
+      invalidateCacheByPrefix(`project:${projectIdFromForm}`);
       
       // 成功レスポンスを返す
       responseData = { success: true, imageUrl: url };
-      invalidateCacheByPrefix(`project:${projectIdFromForm}`);
     } catch (error) {
       console.error("バナー画像アップロードエラー:", error);
-      responseData = { success: false, error: "画像のアップロードに失敗しました" };
+      responseData = { success: false, error: error instanceof Error ? error.message : "画像のアップロードに失敗しました" };
     }
   }
 } else if (formData && formData.get('action') === 'update_project_profile') {
-  const profileImage = formData.get("profileImage");
+  const profileFile = formData.get("profileImage");
   const projectIdFromForm = formData.get("projectId")?.toString();
   
-  if (profileImage && profileImage instanceof File && projectIdFromForm) {
+  if (profileFile && profileFile instanceof File && projectIdFromForm && authUser) {
     try {
-      // バケット名を明示的に指定
-      const bucket = process.env.FIREBASE_STORAGE_BUCKET || "test-87192.firebasestorage.app";
-      const storageRef = admin.storage().bucket(bucket);
+      console.log("プロフィール画像のアップロード開始...");
       
-      const fileRef = storageRef.file(`projects/${projectIdFromForm}/profile/${Date.now()}_${profileImage.name}`);
+      // ファイルサイズのチェック
+      const fileSize = profileFile.size;
+      const fileSizeMB = Math.ceil(fileSize / (1024 * 1024));
       
-      // 残りのコードはそのまま
-      const buffer = Buffer.from(await profileImage.arrayBuffer());
+      console.log(`プロフィール画像サイズ: ${fileSizeMB}MB`);
       
+      // ストレージ制限をチェック
+      await checkStorageLimit(authUser.uid, fileSize);
+      
+      // バケット名を明示的に指定してStorageを初期化
+      const bucket = storage.bucket();
+      
+      // 安全なファイル名に変換（日時プレフィックスと特殊文字の除去）
+      const timestamp = Date.now();
+      const safeFileName = `${timestamp}_${profileFile.name.replace(/[^a-zA-Z0-9.]/g, '_')}`;
+      const filePath = `projects/${projectIdFromForm}/profile/${safeFileName}`;
+      
+      // ファイルデータをBufferに変換
+      const buffer = Buffer.from(await profileFile.arrayBuffer());
+      
+      // ファイルをアップロード
+      const fileRef = bucket.file(filePath);
       await fileRef.save(buffer, {
         metadata: {
-          contentType: profileImage.type
+          contentType: profileFile.type
         }
       });
       
+      // ファイルを公開
+      await fileRef.makePublic();
+      
       // 公開URLを取得
-      const [url] = await fileRef.getSignedUrl({
-        action: "read",
-        expires: "03-01-2500"
-      });
+      const url = `https://storage.googleapis.com/${bucket.name}/${filePath}`;
+      
+      console.log("プロフィール画像のアップロード完了:", url);
+      
+      // ストレージ使用量を更新
+      await updateStorageUsage(projectIdFromForm, authUser.uid, fileSizeMB);
       
       // Firestoreにプロフィール画像URLを保存
       const projectRef = db.collection("projects").doc(projectIdFromForm);
@@ -170,24 +205,29 @@ if (formData && formData.get('action') === 'update_project_banner') {
       
       // ユーザーのprojects配列内の該当プロジェクトも更新
       if (userData && userData.projects) {
-        const updatedProjects = userData.projects.map((p) => {
+        const updatedProjects = userData.projects.map((p: any) => {
           if (p.id === projectIdFromForm) {
             return { ...p, profileImageUrl: url };
           }
           return p;
         });
         
-        await db.collection("users").doc(authUser.uid).update({
-          projects: updatedProjects
-        });
+        if (authUser) {
+          await db.collection("users").doc(authUser.uid).update({
+            projects: updatedProjects
+          });
+        }
       }
       
-      // 成功レスポンスを返す
-      responseData = { success: true, imageUrl: url};
+      // キャッシュを無効化
+      invalidateCacheByPrefix(`user:${authUser.uid}:resourceUsage`);
       invalidateCacheByPrefix(`project:${projectIdFromForm}`);
+      
+      // 成功レスポンスを返す
+      responseData = { success: true, imageUrl: url };
     } catch (error) {
       console.error("プロフィール画像アップロードエラー:", error);
-      responseData = { success: false, error: "画像のアップロードに失敗しました" };
+      responseData = { success: false, error: error instanceof Error ? error.message : "画像のアップロードに失敗しました" };
     }
   }
 } else if (formData && formData.get('action') === 'update_project_info') {
@@ -244,8 +284,8 @@ if (formData && formData.get('action') === 'update_project_banner') {
         });
       }
 
+
       responseData = { success: true };
-      invalidateCacheByPrefix(`project:${projectIdFromForm}`);
     } catch (error) {
       console.error("プロジェクト情報の更新に失敗しました:", error);
       responseData = { error: "更新に失敗しました" };
@@ -664,7 +704,7 @@ try {
 
 <input type="hidden" id="project-id-input" name="projectId" value="">
 
-{responseData && responseData.refreshNeeded && (
+{responseData && 'refreshNeeded' in responseData && responseData.refreshNeeded && (
   <script>
     const urlParams = new URLSearchParams(window.location.search);
     const currentTab = urlParams.get('tab');
@@ -2262,4 +2302,108 @@ try {
       alert("更新に失敗しました");
     }
   });
+
+
+//   // バナー画像アップロードが完了した後、画像を更新する処理
+// document.addEventListener('DOMContentLoaded', function() {
+//   // バナーアップロードフォームがある場合
+//   const bannerForm = document.querySelector('form[action][enctype="multipart/form-data"]') as HTMLFormElement;
+//   if (bannerForm) {
+//     bannerForm.addEventListener('submit', async (e) => {
+//       e.preventDefault();
+      
+//       try {
+//         const formData = new FormData(bannerForm);
+//         const response = await fetch('', {
+//           method: 'POST',
+//           body: formData
+//         });
+        
+//         if (response.ok) {
+//           const data = await response.json();
+//           if (data.success && data.imageUrl) {
+//             // バナー画像を更新
+//             const bannerImg = document.querySelector('.hero_banner_img') as HTMLImageElement;
+//             if (bannerImg) {
+//               // キャッシュを回避するためにタイムスタンプを追加
+//               bannerImg.src = `${data.imageUrl}?t=${Date.now()}`;
+//             }
+            
+//             // 成功メッセージ
+//             showNotification('画像が更新されました', 'success');
+//           } else if (data.error) {
+//             showNotification(data.error, 'error');
+//           }
+//         } else {
+//           showNotification('アップロードに失敗しました', 'error');
+//         }
+//       } catch (error) {
+//         console.error('Form submission error:', error);
+//         showNotification('エラーが発生しました', 'error');
+//       }
+//     });
+//   }
+  
+//   // 通知メッセージを表示する関数
+//   function showNotification(message: string, type = 'info') {
+//     // 通知エリアの作成または取得
+//     let notificationArea = document.getElementById('notification-area');
+//     if (!notificationArea) {
+//       notificationArea = document.createElement('div');
+//       notificationArea.id = 'notification-area';
+//       notificationArea.style.position = 'fixed';
+//       notificationArea.style.top = '20px';
+//       notificationArea.style.right = '20px';
+//       notificationArea.style.zIndex = '9999';
+//       document.body.appendChild(notificationArea);
+//     }
+    
+//     // 通知要素の作成
+//     const notification = document.createElement('div');
+//     notification.style.margin = '0 0 10px 0';
+//     notification.style.padding = '10px 15px';
+//     notification.style.borderRadius = '4px';
+//     notification.style.boxShadow = '0 2px 8px rgba(0,0,0,0.2)';
+//     notification.style.display = 'flex';
+//     notification.style.justifyContent = 'space-between';
+//     notification.style.alignItems = 'center';
+    
+//     // タイプに応じたスタイル設定
+//     if (type === 'success') {
+//       notification.style.backgroundColor = '#e8f5e9';
+//       notification.style.color = '#2e7d32';
+//       notification.style.borderLeft = '4px solid #2e7d32';
+//     } else if (type === 'error') {
+//       notification.style.backgroundColor = '#ffebee';
+//       notification.style.color = '#c62828';
+//       notification.style.borderLeft = '4px solid #c62828';
+//     } else {
+//       notification.style.backgroundColor = '#e3f2fd';
+//       notification.style.color = '#1565c0';
+//       notification.style.borderLeft = '4px solid #1565c0';
+//     }
+    
+//     // メッセージと閉じるボタンを設定
+//     notification.innerHTML = `
+//       <span style="flex-grow: 1;">${message}</span>
+//       <button style="background: none; border: none; cursor: pointer; font-size: 16px; margin-left: 10px;">&times;</button>
+//     `;
+    
+//     // 閉じるボタンのイベントリスナー
+//     const closeButton = notification.querySelector('button');
+//     if (closeButton) {
+//       closeButton.addEventListener('click', () => {
+//         notification.remove();
+//       });
+//     }
+    
+//     // 通知を表示
+//     notificationArea.appendChild(notification);
+    
+//     // 5秒後に通知を自動的に閉じる
+//     setTimeout(() => {
+//       notification.remove();
+//     }, 5000);
+//   }
+// });
 </script>

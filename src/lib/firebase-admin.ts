@@ -30,10 +30,11 @@ export function initializeFirebaseAdmin() {
     // ストレージバケット名を確実に取得
     const storageBucket = 
       process.env.FIREBASE_STORAGE_BUCKET || 
-      (typeof import.meta !== 'undefined' ? import.meta.env.FIREBASE_STORAGE_BUCKET : undefined) ||
-      "test-87192.appspot.com"; // デフォルト値を設定
+      (typeof import.meta !== 'undefined' ? import.meta.env.FIREBASE_STORAGE_BUCKET : undefined);
     
-    console.log(`Initializing Firebase with storage bucket: ${storageBucket}`);
+    if (!storageBucket) {
+      console.warn("FIREBASE_STORAGE_BUCKET環境変数が設定されていません。画像アップロードが動作しません。");
+    }
     
     admin.initializeApp({
       credential: admin.credential.cert(serviceAccount),
@@ -41,6 +42,7 @@ export function initializeFirebaseAdmin() {
     });
     
     console.log("Firebase Admin initialized successfully");
+    console.log(`Storage bucket: ${storageBucket || 'Not configured'}`);
     
     return { 
       db: getFirestore(), 
